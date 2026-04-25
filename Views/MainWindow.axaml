@@ -44,6 +44,27 @@
         <Style Selector="Slider /template/ Track">
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
+
+        <!-- Position slider (in the transport bar, sitting on the dark
+             video background) — explicit white-ish track + accent-colored
+             filled portion, so the unfilled remainder stays visible
+             regardless of which theme override is active. Matches the
+             design-system spec (rgba(255,255,255,0.28) track, accent fill). -->
+        <Style Selector="Slider#PositionSlider /template/ RepeatButton#PART_IncreaseButton /template/ ContentPresenter,
+                         Slider#PositionSlider /template/ RepeatButton#PART_DecreaseButton /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Slider#PositionSlider /template/ Border#TrackBackground">
+            <Setter Property="Background" Value="#47FFFFFF"/>
+            <Setter Property="Height" Value="4"/>
+            <Setter Property="CornerRadius" Value="2"/>
+        </Style>
+        <Style Selector="Slider#PositionSlider /template/ Rectangle#PART_Indicator">
+            <Setter Property="Fill" Value="{DynamicResource SystemAccentColorBrush}"/>
+            <Setter Property="Height" Value="4"/>
+            <Setter Property="RadiusX" Value="2"/>
+            <Setter Property="RadiusY" Value="2"/>
+        </Style>
         <!-- Flyout popup background resets to the default cursor — the
              global Button Hand style above otherwise bleeds through any
              button-like chrome the popup renders and makes the whole
