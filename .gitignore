@@ -1,0 +1,55 @@
+# ─── .NET / build ───────────────────────────────────────────────────
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+[Tt]est[Rr]esults/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.lock.json
+.config/
+*.binlog
+
+# Roslyn caches / shadow copies
+*.cache
+*.[Cc]ache.dll
+.vs/
+
+# JetBrains / VS Code
+.idea/
+.vscode/
+
+# Claude Code (per-user permissions / state)
+.claude/
+
+# ─── Avalonia ───────────────────────────────────────────────────────
+*.axaml.bak
+
+# ─── Python (yt-dlp custom extractors) ──────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# ─── Docker / SearxNG ───────────────────────────────────────────────
+# Real settings.yml contains a secret_key — keep it out of version
+# control. settings.yml.example is committed instead; copy it on first
+# setup and let SearxNG generate a fresh secret_key.
+docker/searxng/settings.yml
+docker/redis-data/
+
+# ─── OS noise ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.bak
+*.tmp
+*.log

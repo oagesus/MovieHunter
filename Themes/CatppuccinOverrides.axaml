@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Layered on top of the Dark FluentTheme: Catppuccin Mocha flavor
+         (https://catppuccin.com) with Mauve (#CBA6F7) as the accent and
+         Mocha's surface ramp: base #1E1E2E, mantle #181825, crust #11111B,
+         surface0 #313244. -->
+
+    <!-- Accent: Catppuccin Mauve (#CBA6F7) with lighter / darker variants. -->
+    <Color x:Key="SystemAccentColor">#CBA6F7</Color>
+    <Color x:Key="SystemAccentColorLight1">#D6B8F9</Color>
+    <Color x:Key="SystemAccentColorLight2">#E0C9FA</Color>
+    <Color x:Key="SystemAccentColorLight3">#EBDBFC</Color>
+    <Color x:Key="SystemAccentColorDark1">#B088E5</Color>
+    <Color x:Key="SystemAccentColorDark2">#946CD0</Color>
+    <Color x:Key="SystemAccentColorDark3">#7850B8</Color>
+
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#CBA6F7"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#D6B8F9"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#E0C9FA"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#EBDBFC"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#B088E5"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#946CD0"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#7850B8"/>
+
+    <!-- Surface colors: Catppuccin Mocha's signature ramp. -->
+    <Color x:Key="SolidBackgroundFillColorBase">#1E1E2E</Color>
+    <Color x:Key="SolidBackgroundFillColorSecondary">#181825</Color>
+    <Color x:Key="SolidBackgroundFillColorTertiary">#11111B</Color>
+    <Color x:Key="SolidBackgroundFillColorQuarternary">#313244</Color>
+
+    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#1E1E2E"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#181825"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#11111B"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#313244"/>
+
+    <!-- Window background resource used by FluentTheme Dark. -->
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="#1E1E2E"/>
+</ResourceDictionary>

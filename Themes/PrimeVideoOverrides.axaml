@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Layered on top of the Dark FluentTheme: Prime Video blue accent
+         (#00A8E1) over Amazon Prime Video's signature dark blue-black
+         backgrounds (#0F171E base, #232F3E elevated). -->
+
+    <!-- Accent: Prime Video blue (#00A8E1) with lighter / darker variants. -->
+    <Color x:Key="SystemAccentColor">#00A8E1</Color>
+    <Color x:Key="SystemAccentColorLight1">#33BAE8</Color>
+    <Color x:Key="SystemAccentColorLight2">#66CCEF</Color>
+    <Color x:Key="SystemAccentColorLight3">#99DDF5</Color>
+    <Color x:Key="SystemAccentColorDark1">#0090C1</Color>
+    <Color x:Key="SystemAccentColorDark2">#0078A2</Color>
+    <Color x:Key="SystemAccentColorDark3">#005E7F</Color>
+
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#00A8E1"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#33BAE8"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#66CCEF"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#99DDF5"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#0090C1"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#0078A2"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#005E7F"/>
+
+    <!-- Surface colors: Prime Video dark blue-black + elevated navy. -->
+    <Color x:Key="SolidBackgroundFillColorBase">#0F171E</Color>
+    <Color x:Key="SolidBackgroundFillColorSecondary">#0A0F14</Color>
+    <Color x:Key="SolidBackgroundFillColorTertiary">#05090C</Color>
+    <Color x:Key="SolidBackgroundFillColorQuarternary">#232F3E</Color>
+
+    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#0F171E"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#0A0F14"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#05090C"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#232F3E"/>
+
+    <!-- Window background resource used by FluentTheme Dark. -->
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="#0F171E"/>
+</ResourceDictionary>

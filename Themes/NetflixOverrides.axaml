@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Layered on top of the Dark FluentTheme: Netflix-red accent
+         (#E50914) over Netflix's signature near-black backgrounds
+         (#141414 base, #2F2F2F for elevated surfaces). -->
+
+    <!-- Accent: Netflix red (#E50914) with lighter / darker variants. -->
+    <Color x:Key="SystemAccentColor">#E50914</Color>
+    <Color x:Key="SystemAccentColorLight1">#F4232F</Color>
+    <Color x:Key="SystemAccentColorLight2">#F83D46</Color>
+    <Color x:Key="SystemAccentColorLight3">#FA5A61</Color>
+    <Color x:Key="SystemAccentColorDark1">#C10812</Color>
+    <Color x:Key="SystemAccentColorDark2">#A4070F</Color>
+    <Color x:Key="SystemAccentColorDark3">#85060D</Color>
+
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#E50914"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#F4232F"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#F83D46"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#FA5A61"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#C10812"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#A4070F"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#85060D"/>
+
+    <!-- Surface colors: Netflix signature near-black + elevated dark gray. -->
+    <Color x:Key="SolidBackgroundFillColorBase">#141414</Color>
+    <Color x:Key="SolidBackgroundFillColorSecondary">#0B0B0B</Color>
+    <Color x:Key="SolidBackgroundFillColorTertiary">#000000</Color>
+    <Color x:Key="SolidBackgroundFillColorQuarternary">#2F2F2F</Color>
+
+    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#141414"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#0B0B0B"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#000000"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#2F2F2F"/>
+
+    <!-- Window background resource used by FluentTheme Dark. -->
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="#141414"/>
+</ResourceDictionary>

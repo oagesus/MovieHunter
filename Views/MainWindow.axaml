@@ -1,0 +1,748 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MovieHunter.ViewModels"
+        xmlns:models="using:MovieHunter.Models"
+        xmlns:services="using:MovieHunter.Services"
+        xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="780"
+        x:Class="MovieHunter.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="MovieHunter"
+        Width="1280" Height="780"
+        Padding="0"
+        WindowDecorations="None">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Window.Styles>
+        <!-- Hand cursor on every interactive control so clickable areas
+             (poster cards, result buttons, transport buttons, sliders,
+             caption buttons, checkboxes, radio buttons) visibly invite a
+             click. -->
+        <Style Selector="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="ToggleButton">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <!-- Hand cursor only on the slider track/thumb parts, not the
+             full Slider bounding box (which extends beyond the visible
+             line and triggered the pointer prematurely). -->
+        <Style Selector="Slider /template/ Thumb">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Slider /template/ Track">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <!-- Flyout popup background resets to the default cursor — the
+             global Button Hand style above otherwise bleeds through any
+             button-like chrome the popup renders and makes the whole
+             popup surface feel clickable. -->
+        <Style Selector="FlyoutPresenter">
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+
+        <!-- Netflix-style transport buttons: no background at all, just
+             the icon. On hover the icon scales up ~15% and the color stays
+             white, no tint added behind it. Animated for the subtle zoom. -->
+        <Style Selector="Button.transport, ToggleButton.transport">
+            <Setter Property="Width" Value="64"/>
+            <Setter Property="Height" Value="56"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="28"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol, Segoe UI Emoji, sans-serif"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+            <!-- Outer button is Arrow; only the inner icon Border switches
+                 to Hand so the cursor doesn't flip too early in the wide
+                 padding around the icon. -->
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        <Style Selector="Border.transport-icon">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.transport /template/ ContentPresenter,
+                         ToggleButton.transport /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.transport:pointerover /template/ ContentPresenter,
+                         ToggleButton.transport:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.transport:pressed /template/ ContentPresenter,
+                         ToggleButton.transport:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.transport:pointerover,
+                         ToggleButton.transport:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.3)"/>
+        </Style>
+        <Style Selector="TextBlock.time">
+            <Setter Property="FontFamily" Value="Consolas, Menlo, monospace"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Width" Value="56"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Cleaner scrollbar: always the same slim width, rounded thumb,
+             no expand-on-hover jump. -->
+        <Style Selector="ScrollBar:vertical">
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="MinWidth" Value="10"/>
+            <Setter Property="AllowAutoHide" Value="False"/>
+            <Setter Property="Padding" Value="2"/>
+        </Style>
+        <Style Selector="ScrollBar:horizontal">
+            <Setter Property="Height" Value="10"/>
+            <Setter Property="MinHeight" Value="10"/>
+            <Setter Property="AllowAutoHide" Value="False"/>
+            <Setter Property="Padding" Value="2"/>
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb">
+            <Setter Property="Background" Value="#55000000"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="MinWidth" Value="24"/>
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb:pointerover">
+            <Setter Property="Background" Value="#88000000"/>
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb:pressed">
+            <Setter Property="Background" Value="#AA000000"/>
+        </Style>
+        <Style Selector="ScrollBar /template/ RepeatButton">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ Border#TrackBackground,
+                         ScrollBar:horizontal /template/ Border#TrackBackground">
+            <Setter Property="Background" Value="#10000000"/>
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+
+        <!-- Recently-watched card: suppress the default button hover
+             overlay — hover styling lives on the inner poster Border
+             below so the accent-colored outline hugs the poster only
+             (the progress bar beneath stays un-framed). -->
+        <Style Selector="Button.recent-card /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="Button.recent-card:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.recent-card:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <!-- Poster always reserves a 2px border (transparent) so hovering
+             doesn't shift layout; pointer-over on the parent button swaps
+             in the current theme accent. -->
+        <Style Selector="Border.poster">
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <!-- Pointer-over swap is handled in code-behind (Poster_PointerEntered /
+             Poster_PointerExited) — descendant selectors don't reliably
+             reach into ItemTemplate content. -->
+
+        <!-- Custom title-bar caption buttons. Transparent by default so
+             they inherit the title-bar background; hover highlights with a
+             subtle overlay, with close going Windows-red on hover. -->
+        <Style Selector="Button.caption">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <!-- Title-bar buttons keep the default arrow cursor — feels
+                 more like native window chrome than an in-app control. -->
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        <!-- Minimize / maximize use FluentTheme's default Button hover
+             background (same as the theme button) — no explicit override
+             needed. Close still has its own red rule below. -->
+        <Style Selector="Button.caption.close:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E81123"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Back arrow in the video overlay: no hover tint at all; subtle
+             scale-up on hover to match the transport-bar icons. -->
+        <Style Selector="Button.back">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        <Style Selector="Button.back /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.back:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.back:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.back:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.3)"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Custom title bar: MovieHunter name + theme picker on the left,
+             our own minimize / maximize / close on the right. Background is
+             transparent so it picks up the window (theme) background. The
+             Grid handles dragging via PointerPressed; clicks on buttons are
+             consumed by the buttons themselves so drag only triggers on
+             empty space. -->
+        <Grid Grid.Row="0" x:Name="TitleBar" Height="32"
+              Background="Transparent"
+              ColumnDefinitions="Auto,Auto,*,Auto"
+              PointerPressed="TitleBar_PointerPressed">
+            <TextBlock Grid.Column="0"
+                       Text="MovieHunter"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Margin="12,0,8,0"/>
+            <Button Grid.Column="1"
+                    Content="◐"
+                    ToolTip.Tip="Theme"
+                    Width="28" Height="28"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    Cursor="Arrow"
+                    FontSize="14"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center">
+                <Button.Flyout>
+                    <Flyout Placement="Bottom">
+                        <StackPanel Width="200" Spacing="4">
+                            <TextBlock Text="SYSTEM THEMES" FontSize="11" Opacity="0.6"/>
+                            <RadioButton x:Name="SystemThemeRadio"
+                                         Content="System"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="SystemTheme_Checked"/>
+                            <RadioButton x:Name="LightThemeRadio"
+                                         Content="Light (System Accent)"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="LightTheme_Checked"/>
+                            <RadioButton x:Name="DarkThemeRadio"
+                                         Content="Dark (System Accent)"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="DarkTheme_Checked"/>
+                            <Separator Margin="0,4"/>
+                            <TextBlock Text="CUSTOM THEMES" FontSize="11" Opacity="0.6"/>
+                            <RadioButton x:Name="CatppuccinThemeRadio"
+                                         Content="Catppuccin"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="CatppuccinTheme_Checked"/>
+                            <RadioButton x:Name="DisneyPlusThemeRadio"
+                                         Content="Disney+"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="DisneyPlusTheme_Checked"/>
+                            <RadioButton x:Name="DraculaThemeRadio"
+                                         Content="Dracula"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="DraculaTheme_Checked"/>
+                            <RadioButton x:Name="NetflixThemeRadio"
+                                         Content="Netflix"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="NetflixTheme_Checked"/>
+                            <RadioButton x:Name="PrimeVideoThemeRadio"
+                                         Content="Prime Video"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="PrimeVideoTheme_Checked"/>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <Button Classes="caption" Content="&#x2013;"
+                        Click="Minimize_Click"
+                        ToolTip.Tip="Minimize"/>
+                <Button Classes="caption" Content="&#x25A1;"
+                        x:Name="MaxRestoreBtn"
+                        Click="MaxRestore_Click"
+                        ToolTip.Tip="Maximize"/>
+                <Button Classes="caption close" Content="&#x2715;"
+                        Click="CloseWindow_Click"
+                        ToolTip.Tip="Close"/>
+            </StackPanel>
+        </Grid>
+
+    <Grid Grid.Row="1" x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="12">
+
+        <Grid x:Name="SearchBar" Grid.Row="0" ColumnDefinitions="*,110,Auto,Auto">
+            <TextBox Grid.Column="0" x:Name="TitleBox" Margin="0,0,8,0"
+                     PlaceholderText="Title"
+                     Text="{Binding Title}"/>
+            <TextBox Grid.Column="1" x:Name="YearBox" Margin="0,0,8,0"
+                     PlaceholderText="Year"
+                     Text="{Binding Year}"/>
+            <Button  Grid.Column="2" Content="⚙"
+                     Width="32" Height="32" Padding="0" Margin="0,0,8,0"
+                     VerticalAlignment="Center"
+                     HorizontalContentAlignment="Center"
+                     VerticalContentAlignment="Center"
+                     ToolTip.Tip="Sources">
+                <Button.Flyout>
+                    <Flyout Placement="Bottom" Opened="SourcesFlyout_Opened">
+                        <StackPanel x:Name="SourcesFlyoutPanel"
+                                    Width="300" Spacing="6"
+                                    Focusable="True"
+                                    Background="Transparent">
+                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                                <TextBlock Grid.Column="0" Text="Results per source:"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               x:Name="ResultsPerSourceBox"
+                                               Value="{Binding Sources.ResultsPerSource}"
+                                               Minimum="1"
+                                               FormatString="0"
+                                               ShowButtonSpinner="False"
+                                               IsTabStop="False"
+                                               KeyDown="ResultsPerSourceBox_KeyDown"
+                                               ValueChanged="ResultsPerSourceBox_ValueChanged"
+                                               Width="70" Height="28"/>
+                            </Grid>
+                            <Separator Margin="0,4"/>
+                            <TextBlock Text="METADATA" FontSize="11" Opacity="0.6"/>
+                            <CheckBox Content="TMDB"
+                                      IsChecked="{Binding Sources.TmdbEnabled}"
+                                      Margin="0,2"/>
+                            <!-- Icon column is a fixed 20px so the TextBox
+                                 position never shifts based on icon content.
+                                 The icon aligns under the CheckBox indicator. -->
+                            <Grid ColumnDefinitions="20,*"
+                                  IsVisible="{Binding Sources.TmdbEnabled}"
+                                  Margin="0,2,0,0">
+                                <TextBlock Grid.Column="0"
+                                           x:Name="TmdbKeyStatusIcon"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           FontWeight="Bold"/>
+                                <TextBox Grid.Column="1"
+                                         x:Name="TmdbKeyBox"
+                                         Text="{Binding Sources.TmdbApiKey, Mode=TwoWay}"
+                                         PlaceholderText="API key"
+                                         KeyDown="TmdbKeyBox_KeyDown"
+                                         LostFocus="TmdbKeyBox_LostFocus"/>
+                            </Grid>
+                            <Separator Margin="0,4"/>
+                            <TextBlock Text="SOURCES" FontSize="11" Opacity="0.6"/>
+                            <ScrollViewer MaxHeight="380">
+                                <ItemsControl ItemsSource="{Binding Sources.Entries}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="services:SourceToggle">
+                                            <CheckBox Content="{Binding DisplayName}"
+                                                      IsChecked="{Binding Enabled}"
+                                                      Margin="0,2"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+            <Button  Grid.Column="3" Content="Search" MinWidth="90"
+                     Command="{Binding SearchCommand}"
+                     IsEnabled="{Binding !IsSearching}"/>
+        </Grid>
+
+        <Grid Grid.Row="1" x:Name="ContentGrid" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="380"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="ResultsPanel" Grid.Column="0"
+                    BorderBrush="#33000000" BorderThickness="1"
+                    CornerRadius="4" Margin="0,0,12,0"
+                    ClipToBounds="True">
+                <ListBox ItemsSource="{Binding Results}"
+                         SelectedItem="{Binding SelectedResult}"
+                         KeyboardNavigation.TabNavigation="Continue">
+                    <ListBox.Styles>
+                        <!-- Tab should skip the row itself and go directly
+                             to the buttons inside the row. -->
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="IsTabStop" Value="False"/>
+                        </Style>
+                    </ListBox.Styles>
+                    <!-- Disable virtualization so all result rows are
+                         materialized — required for Tab to reach buttons
+                         in rows that are currently scrolled out of view. -->
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="models:VideoResult">
+                            <Grid Margin="1" ColumnDefinitions="Auto,*,Auto">
+                                <!-- Poster from hdfilme (2:3 aspect). -->
+                                <Border Grid.Column="0" Width="60" Height="90"
+                                        Margin="0,0,6,0"
+                                        Background="#22000000"
+                                        CornerRadius="3"
+                                        ClipToBounds="True">
+                                    <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
+                                           Stretch="UniformToFill"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="2"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source}" FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding MetaLine}" FontSize="11" Opacity="0.7"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                            Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
+                                    <Button Content="▶" Tag="{Binding}"
+                                            Click="PlayResult_Click"
+                                            ToolTip.Tip="Play this result (Enter)"
+                                            Width="32" Height="32" Padding="0"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"/>
+                                    <Button Content="🌐" Tag="{Binding}"
+                                            Click="OpenSource_Click"
+                                            ToolTip.Tip="Open source page in browser (Enter)"
+                                            Width="32" Height="32" Padding="0"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <Border x:Name="VideoBorder" Background="Black" CornerRadius="0" ClipToBounds="True">
+                    <Grid x:Name="VideoOverlayRoot" Background="Transparent"
+                          Focusable="True">
+                        <Image x:Name="VideoImage" Stretch="Uniform" IsVisible="False"/>
+
+                        <!-- Top gradient strip: dark at the top, gently
+                             fades to transparent over ~200px with an
+                             intermediate stop so the transition is smooth
+                             (no visible band). Purely decorative. -->
+                        <Border x:Name="TopGradient"
+                                VerticalAlignment="Top"
+                                Height="200"
+                                IsHitTestVisible="False"
+                                IsVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                    <GradientStop Offset="0" Color="#E6000000"/>
+                                    <GradientStop Offset="0.5" Color="#66000000"/>
+                                    <GradientStop Offset="1" Color="#00000000"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <!-- Bottom gradient strip: mirrors the top — fades
+                             from transparent at the top to dark at the
+                             bottom over ~280px (transport controls sit in
+                             the darkest part). -->
+                        <Border x:Name="BottomGradient"
+                                VerticalAlignment="Bottom"
+                                Height="280"
+                                IsHitTestVisible="False"
+                                IsVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                    <GradientStop Offset="0" Color="#00000000"/>
+                                    <GradientStop Offset="0.5" Color="#66000000"/>
+                                    <GradientStop Offset="1" Color="#E6000000"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <!-- Back arrow (Netflix-style): stops playback and
+                             returns to the recently-watched overlay. Hidden
+                             until a movie is loaded. -->
+                        <Button x:Name="BackButton"
+                                Classes="back"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Margin="16"
+                                Width="52" Height="52"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                Foreground="White"
+                                FontSize="30"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                IsVisible="False"
+                                Focusable="False"
+                                IsTabStop="False"
+                                Click="Back_Click">
+                            <Border Classes="transport-icon">
+                                <TextBlock Text="&#x2190;"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                        </Button>
+                        <TextBlock x:Name="CurrentMovieTitle"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Top"
+                                   Margin="60,31,60,0"
+                                   Foreground="White"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="600"
+                                   IsVisible="False"/>
+
+                        <!-- Recently-watched overlay: shown when no video is
+                             loaded. Clicking a card resumes from the saved
+                             position. Hidden once the user plays something. -->
+                        <ScrollViewer x:Name="RecentOverlay"
+                                      Background="{DynamicResource SystemRegionBrush}"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Recently watched"
+                                           FontSize="18" FontWeight="SemiBold"
+                                           Margin="0,0,0,12"/>
+                                <TextBlock x:Name="RecentEmptyLabel"
+                                           Text="Search for a movie and play one — it'll show up here next time."
+                                           Opacity="0.6"
+                                           FontSize="13"/>
+                                <ItemsControl ItemsSource="{Binding Recent.Items}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="services:RecentWatch">
+                                            <Button Tag="{Binding}"
+                                                    Classes="recent-card"
+                                                    Click="RecentWatch_Click"
+                                                    PointerEntered="RecentCard_PointerEntered"
+                                                    PointerExited="RecentCard_PointerExited"
+                                                    Width="140" Margin="0,0,10,10"
+                                                    Padding="0"
+                                                    Background="Transparent">
+                                                <StackPanel>
+                                                    <!-- Explicit RectangleGeometry clip on the whole card:
+                                                         this is the Avalonia-recommended way to get
+                                                         pixel-perfect rounded corners (Border.ClipToBounds +
+                                                         CornerRadius has subpixel artifacts, see
+                                                         AvaloniaUI/Avalonia#2105 / #9980). One clip applies
+                                                         to every child — image, title overlay, hover border
+                                                         — so everything's curves line up exactly. -->
+                                                    <!-- Image AND title overlay share a single rounded
+                                                         Border — one CornerRadius + ClipToBounds clips both
+                                                         as a single visual so their edges can't diverge at
+                                                         the corners. Hover frame is stacked on top, same
+                                                         bounds and same radius. -->
+                                                    <Grid Width="140" Height="210">
+                                                        <Border Background="#33000000"
+                                                                CornerRadius="6"
+                                                                ClipToBounds="True">
+                                                            <Panel>
+                                                                <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
+                                                                       Stretch="UniformToFill"/>
+                                                                <Border VerticalAlignment="Bottom"
+                                                                        Background="#CC000000"
+                                                                        Padding="6,4">
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="{Binding Title}"
+                                                                                   Foreground="White"
+                                                                                   FontSize="12"
+                                                                                   FontWeight="SemiBold"
+                                                                                   TextWrapping="Wrap"/>
+                                                                        <TextBlock Text="{Binding Source}"
+                                                                                   Foreground="#AAFFFFFF"
+                                                                                   FontSize="10"
+                                                                                   TextWrapping="Wrap"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </Panel>
+                                                        </Border>
+                                                        <Border Classes="poster"
+                                                                CornerRadius="6"
+                                                                BorderThickness="2"
+                                                                BorderBrush="Transparent"
+                                                                IsHitTestVisible="False"/>
+                                                    </Grid>
+                                                    <!-- Netflix-style progress strip below the poster. The
+                                                         Border clips the bar to a 2px pill so the edges of the
+                                                         filled / track portions are rounded. -->
+                                                    <Border Margin="0,4,0,0"
+                                                            CornerRadius="2"
+                                                            ClipToBounds="True">
+                                                        <ProgressBar Value="{Binding Progress, Mode=OneWay}"
+                                                                     Maximum="1"
+                                                                     Height="3"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <Border x:Name="TransportBarContainer"
+                                VerticalAlignment="Bottom"
+                                Padding="4,8,4,12"
+                                Background="Transparent"
+                                IsVisible="False">
+                            <!-- Netflix-style two-row transport:
+                                 Row 0: position slider + remaining time
+                                 Row 1: play/pause, -10s, +10s, mute+volume, fullscreen
+                                 Play button starts flush-left with the slider. -->
+                            <Grid x:Name="TransportBar"
+                                  RowDefinitions="Auto,Auto">
+                                <Grid Grid.Row="0" x:Name="TimelineRow"
+                                      ColumnDefinitions="*,Auto"
+                                      Margin="12,0,12,0">
+                                    <Slider   Grid.Column="0" x:Name="PositionSlider"
+                                              Minimum="0" Maximum="1000" Value="0"
+                                              Focusable="False" IsTabStop="False"
+                                              VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" x:Name="DurationLabel" Classes="time"
+                                               Text="00:00" Margin="12,0,0,0"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                                <Grid Grid.Row="1"
+                                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+                                    <Button Grid.Column="0" x:Name="PlayPauseBtn" Classes="transport"
+                                            Click="PlayPause_Click"
+                                            Focusable="False" IsTabStop="False">
+                                        <Border Classes="transport-icon">
+                                            <TextBlock x:Name="PlayPauseIcon" Text="▶"
+                                                       TextAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Button>
+                                    <Button Grid.Column="1" x:Name="Back10Btn" Classes="transport"
+                                            Click="Back10_Click" Margin="2,0,0,0"
+                                            Focusable="False" IsTabStop="False">
+                                        <Border Classes="transport-icon">
+                                            <TextBlock Text="⏪"
+                                                       TextAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Button>
+                                    <Button Grid.Column="2" x:Name="Forward10Btn" Classes="transport"
+                                            Click="Forward10_Click" Margin="2,0,0,0"
+                                            Focusable="False" IsTabStop="False">
+                                        <Border Classes="transport-icon">
+                                            <TextBlock Text="⏩"
+                                                       TextAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Button>
+                                    <Button Grid.Column="3" x:Name="MuteBtn" Classes="transport"
+                                            Click="Mute_Click" Margin="2,0,0,0"
+                                            Focusable="False" IsTabStop="False"
+                                            PointerEntered="Mute_PointerEntered"
+                                            PointerExited="Mute_PointerExited">
+                                        <Border Classes="transport-icon">
+                                            <TextBlock x:Name="MuteIcon" Text="🔊"
+                                                       TextAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Button>
+                                    <!-- Volume popup anchored to the mute button — vertical
+                                         slider + percentage, Netflix-style. Stays open while
+                                         the pointer is over the mute button or the popup. -->
+                                    <Popup Grid.Column="3" x:Name="VolumePopup"
+                                           PlacementTarget="{Binding #MuteBtn}"
+                                           Placement="Top"
+                                           VerticalOffset="-8"
+                                           IsLightDismissEnabled="False">
+                                        <Border x:Name="VolumePopupContent"
+                                                Background="{DynamicResource ToolTipBackground}"
+                                                CornerRadius="6"
+                                                Padding="4"
+                                                PointerEntered="VolumePopupContent_PointerEntered"
+                                                PointerExited="VolumePopupContent_PointerExited">
+                                            <StackPanel HorizontalAlignment="Center" Spacing="4">
+                                                <TextBlock x:Name="VolumePopupText"
+                                                           Text="100%"
+                                                           Foreground="{DynamicResource ToolTipForeground}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center"/>
+                                                <Slider x:Name="VolumeSlider"
+                                                        Orientation="Vertical"
+                                                        Height="140"
+                                                        Minimum="0" Maximum="100" Value="100"
+                                                        ValueChanged="Volume_Changed"
+                                                        Focusable="False" IsTabStop="False"
+                                                        HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Popup>
+                                    <Button Grid.Column="5" Classes="transport"
+                                            Focusable="False" IsTabStop="False"
+                                            Click="Fullscreen_Click">
+                                        <Border Classes="transport-icon">
+                                            <TextBlock Text="⛶"
+                                                       TextAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <TextBlock x:Name="StatusText" Grid.Row="2" Text="{Binding Status}"
+                   Margin="0,8,0,0" Opacity="0.85"/>
+    </Grid>
+    </Grid>
+</Window>

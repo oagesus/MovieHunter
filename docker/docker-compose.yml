@@ -1,0 +1,49 @@
+services:
+  redis:
+    image: valkey/valkey:8-alpine
+    container_name: moviehunter-redis
+    restart: unless-stopped
+    command: valkey-server --save 30 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    networks: [moviehunter]
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: moviehunter-searxng
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+      - SEARXNG_REDIS_URL=redis://redis:6379/0
+      - INSTANCE_NAME=MovieHunter
+    depends_on: [redis]
+    networks: [moviehunter]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: moviehunter-bgutil
+    restart: unless-stopped
+    init: true
+    networks: [moviehunter]
+
+  ytdlp-api:
+    build: ./ytdlp-api
+    image: moviehunter/ytdlp-api:latest
+    container_name: moviehunter-ytdlp
+    restart: unless-stopped
+    ports:
+      - "9000:8080"
+    depends_on: [bgutil]
+    networks: [moviehunter]
+
+networks:
+  moviehunter:
+
+volumes:
+  redis-data:

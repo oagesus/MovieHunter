@@ -1,0 +1,102 @@
+use_default_settings: true
+
+server:
+  # Replace this on first setup with your own random key, e.g.
+  #   openssl rand -hex 32
+  # or
+  #   python -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "REPLACE_WITH_A_RANDOM_64_HEX_CHAR_STRING"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 15.0
+  max_request_timeout: 30.0
+
+general:
+  instance_name: "MovieHunter"
+  debug: false
+
+engines:
+  # ────────────────────────────────────────────────────────────────────────
+  # Disable every default video engine so only `hdfilme` remains. Adding
+  # an engine by name with `disabled: true` overrides the default.
+  # ────────────────────────────────────────────────────────────────────────
+  - name: bing videos
+    disabled: true
+  - name: duckduckgo videos
+    disabled: true
+  - name: google videos
+    disabled: true
+  - name: qwant videos
+    disabled: true
+  - name: youtube
+    disabled: true
+  - name: dailymotion
+    disabled: true
+  - name: sepiasearch
+    disabled: true
+  - name: wikicommons.videos
+    disabled: true
+  - name: bilibili
+    disabled: true
+  - name: invidious
+    disabled: true
+  - name: peertube
+    disabled: true
+  - name: piped
+    disabled: true
+  - name: rumble
+    disabled: true
+  - name: vimeo
+    disabled: true
+  - name: bitchute
+    disabled: true
+  - name: 9gag
+    disabled: true
+  - name: acfun
+    disabled: true
+  - name: odysee
+    disabled: true
+  - name: niconico
+    disabled: true
+  - name: mediathekviewweb
+    disabled: true
+  - name: brave.videos
+    disabled: true
+  - name: 360search videos
+    disabled: true
+  - name: adobe stock video
+    disabled: true
+  - name: aol videos
+    disabled: true
+  - name: mojvideo
+    disabled: true
+  - name: pearvideo
+    disabled: true
+
+  # ────────────────────────────────────────────────────────────────────────
+  # hdfilme — DLE-based German streaming catalog.
+  # ────────────────────────────────────────────────────────────────────────
+  - name: hdfilme
+    engine: xpath
+    shortcut: hd
+    categories: [videos]
+    disabled: false
+    timeout: 10.0
+    paging: true
+
+    search_url: https://hdfilme.win/?story={query}&do=search&subaction=search&search_start={pageno}
+
+    results_xpath: //div[@class="item relative mt-3"]
+    url_xpath: .//a[@class="movie-title"]/@href
+    title_xpath: .//a[@class="movie-title"]/@title
+    content_xpath: .//div[contains(@class,"meta")]//text()
+    thumbnail_xpath: .//img/@data-src

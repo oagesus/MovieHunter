@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Layered on top of the Dark FluentTheme: Disney+ blue accent
+         (#0063E5) over Disney+'s signature dark navy backgrounds
+         (#0C111C base, #1A1D29 elevated). -->
+
+    <!-- Accent: Disney+ blue (#0063E5) with lighter / darker variants. -->
+    <Color x:Key="SystemAccentColor">#0063E5</Color>
+    <Color x:Key="SystemAccentColorLight1">#2E7CEB</Color>
+    <Color x:Key="SystemAccentColorLight2">#5795F0</Color>
+    <Color x:Key="SystemAccentColorLight3">#80AEF5</Color>
+    <Color x:Key="SystemAccentColorDark1">#0054C3</Color>
+    <Color x:Key="SystemAccentColorDark2">#0044A1</Color>
+    <Color x:Key="SystemAccentColorDark3">#00357F</Color>
+
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#0063E5"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#2E7CEB"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#5795F0"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#80AEF5"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#0054C3"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#0044A1"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#00357F"/>
+
+    <!-- Surface colors: Disney+ dark navy + elevated navy. -->
+    <Color x:Key="SolidBackgroundFillColorBase">#0C111C</Color>
+    <Color x:Key="SolidBackgroundFillColorSecondary">#050713</Color>
+    <Color x:Key="SolidBackgroundFillColorTertiary">#03050D</Color>
+    <Color x:Key="SolidBackgroundFillColorQuarternary">#1A1D29</Color>
+
+    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#0C111C"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#050713"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#03050D"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#1A1D29"/>
+
+    <!-- Window background resource used by FluentTheme Dark. -->
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="#0C111C"/>
+</ResourceDictionary>
