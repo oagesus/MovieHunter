@@ -3,11 +3,19 @@
              x:Class="MovieHunter.App"
              xmlns:local="using:MovieHunter"
              RequestedThemeVariant="Light">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
+
+    <Application.Resources>
+        <!-- Calm-cinema design system: replace FluentTheme's default
+             Segoe UI with Inter (already bundled via Avalonia.Fonts.Inter).
+             Inter is the closest free cousin of Manrope (called for in
+             the design spec) and gives us the same clean, low-personality
+             feel without bundling new font files. -->
+        <FontFamily x:Key="ContentControlThemeFontFamily">Inter</FontFamily>
+    </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
