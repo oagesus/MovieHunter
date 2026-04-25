@@ -382,15 +382,39 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                 </Border>
-                <Button Classes="nav" Content="🔍"
+                <Button Classes="nav"
                         Click="NavSearch_Click"
-                        ToolTip.Tip="Search"/>
-                <Button Classes="nav" Content="🕐"
+                        ToolTip.Tip="Search">
+                    <Viewbox Width="20" Height="20">
+                        <Path Data="M 11 3 a 8 8 0 1 0 0 16 a 8 8 0 1 0 0 -16 M 21 21 L 16.65 16.65"
+                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="Transparent"/>
+                    </Viewbox>
+                </Button>
+                <Button Classes="nav"
                         Click="NavRecent_Click"
-                        ToolTip.Tip="Recently watched"/>
-                <Button Classes="nav" Content="⚙"
+                        ToolTip.Tip="Recently watched">
+                    <Viewbox Width="20" Height="20">
+                        <Path Data="M 12 2 a 10 10 0 1 0 0 20 a 10 10 0 1 0 0 -20 M 12 6 V 12 L 16 14"
+                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="Transparent"/>
+                    </Viewbox>
+                </Button>
+                <Button Classes="nav"
                         Click="NavSettings_Click"
-                        ToolTip.Tip="Settings"/>
+                        ToolTip.Tip="Settings">
+                    <Viewbox Width="20" Height="20">
+                        <Path Data="M 12 2 v 2.2 M 12 19.8 V 22 M 19.8 12 H 22 M 2 12 h 2.2 M 17.5 6.5 l 1.6 -1.6 M 4.9 19.1 l 1.6 -1.6 M 17.5 17.5 l 1.6 1.6 M 4.9 4.9 l 1.6 1.6 M 12 8 a 4 4 0 1 0 0 8 a 4 4 0 1 0 0 -8"
+                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="Transparent"/>
+                    </Viewbox>
+                </Button>
             </StackPanel>
         </Border>
 
@@ -605,10 +629,12 @@
                                 IsTabStop="False"
                                 Click="Back_Click">
                             <Border Classes="transport-icon">
-                                <TextBlock Text="&#x2190;"
-                                           TextAlignment="Center"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"/>
+                                <Viewbox Width="28" Height="28">
+                                    <Path Data="M 12 19 L 5 12 L 12 5 M 19 12 H 5"
+                                          Stroke="White" StrokeThickness="1.8"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          Fill="Transparent"/>
+                                </Viewbox>
                             </Border>
                         </Button>
                         <TextBlock x:Name="CurrentMovieTitle"
@@ -692,6 +718,21 @@
                                                                 </Border>
                                                             </Panel>
                                                         </Border>
+                                                        <!-- "▸ Resume" hover overlay (per design system). Sits
+                                                             between the poster content and the hover frame; only
+                                                             visible while pointer is over the parent button. -->
+                                                        <Border Classes="resume"
+                                                                CornerRadius="12"
+                                                                Background="#80000000"
+                                                                IsHitTestVisible="False"
+                                                                IsVisible="False">
+                                                            <TextBlock Text="▸ Resume"
+                                                                       Foreground="White"
+                                                                       FontSize="13"
+                                                                       FontWeight="Medium"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"/>
+                                                        </Border>
                                                         <Border Classes="poster"
                                                                 CornerRadius="12"
                                                                 BorderThickness="2"
@@ -745,30 +786,42 @@
                                             Click="PlayPause_Click"
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
-                                            <TextBlock x:Name="PlayPauseIcon" Text="▶"
-                                                       TextAlignment="Center"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"/>
+                                            <Viewbox Width="30" Height="30">
+                                                <Grid Width="24" Height="24">
+                                                    <Path x:Name="PlayIcon"
+                                                          Data="M 6 3 L 20 12 L 6 21 Z"
+                                                          Fill="White"/>
+                                                    <Path x:Name="PauseIcon"
+                                                          Data="M 8 4 L 8 20 M 16 4 L 16 20"
+                                                          Stroke="White" StrokeThickness="2.5"
+                                                          StrokeLineCap="Round"
+                                                          IsVisible="False"/>
+                                                </Grid>
+                                            </Viewbox>
                                         </Border>
                                     </Button>
                                     <Button Grid.Column="1" x:Name="Back10Btn" Classes="transport"
                                             Click="Back10_Click" Margin="2,0,0,0"
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
-                                            <TextBlock Text="⏪"
-                                                       TextAlignment="Center"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"/>
+                                            <Viewbox Width="26" Height="26">
+                                                <Path Data="M 3 12 a 9 9 0 1 0 3 -7.7 L 3 8 M 3 3 v 5 h 5"
+                                                      Stroke="White" StrokeThickness="1.8"
+                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Viewbox>
                                         </Border>
                                     </Button>
                                     <Button Grid.Column="2" x:Name="Forward10Btn" Classes="transport"
                                             Click="Forward10_Click" Margin="2,0,0,0"
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
-                                            <TextBlock Text="⏩"
-                                                       TextAlignment="Center"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"/>
+                                            <Viewbox Width="26" Height="26">
+                                                <Path Data="M 21 12 a 9 9 0 1 1 -3 -7.7 L 21 8 M 21 3 v 5 h -5"
+                                                      Stroke="White" StrokeThickness="1.8"
+                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Viewbox>
                                         </Border>
                                     </Button>
                                     <Button Grid.Column="3" x:Name="MuteBtn" Classes="transport"
@@ -777,10 +830,21 @@
                                             PointerEntered="Mute_PointerEntered"
                                             PointerExited="Mute_PointerExited">
                                         <Border Classes="transport-icon">
-                                            <TextBlock x:Name="MuteIcon" Text="🔊"
-                                                       TextAlignment="Center"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"/>
+                                            <Viewbox Width="26" Height="26">
+                                                <Grid Width="24" Height="24">
+                                                    <Path x:Name="VolumeOnIcon"
+                                                          Data="M 11 5 L 6 9 H 2 v 6 h 4 l 5 4 z M 15.54 8.46 a 5 5 0 0 1 0 7.07 M 19.07 4.93 a 10 10 0 0 1 0 14.14"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                    <Path x:Name="VolumeOffIcon"
+                                                          Data="M 11 5 L 6 9 H 2 v 6 h 4 l 5 4 z M 22 9 l -6 6 M 16 9 l 6 6"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"
+                                                          IsVisible="False"/>
+                                                </Grid>
+                                            </Viewbox>
                                         </Border>
                                     </Button>
                                     <!-- Volume popup anchored to the mute button — vertical
@@ -818,10 +882,12 @@
                                             Focusable="False" IsTabStop="False"
                                             Click="Fullscreen_Click">
                                         <Border Classes="transport-icon">
-                                            <TextBlock Text="⛶"
-                                                       TextAlignment="Center"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"/>
+                                            <Viewbox Width="26" Height="26">
+                                                <Path Data="M 8 3 H 5 a 2 2 0 0 0 -2 2 v 3 M 21 8 V 5 a 2 2 0 0 0 -2 -2 h -3 M 3 16 v 3 a 2 2 0 0 0 2 2 h 3 M 16 21 h 3 a 2 2 0 0 0 2 -2 v -3"
+                                                      Stroke="White" StrokeThickness="1.8"
+                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Viewbox>
                                         </Border>
                                     </Button>
                                 </Grid>

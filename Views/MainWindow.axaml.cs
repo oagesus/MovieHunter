@@ -221,7 +221,7 @@ public partial class MainWindow : Window
     {
         _player.Playing += (_, _) => UI(() =>
         {
-            PlayPauseIcon.Text = "⏸";
+            PlayIcon.IsVisible = false; PauseIcon.IsVisible = true;
             // Apply a saved resume position once playback is underway and
             // the stream is seekable / we know its length.
             if (_pendingSeekMs > 0 && _player.IsSeekable && _player.Length > 0)
@@ -232,12 +232,12 @@ public partial class MainWindow : Window
         });
         _player.Paused += (_, _) => UI(() =>
         {
-            PlayPauseIcon.Text = "▶";
+            PlayIcon.IsVisible = true; PauseIcon.IsVisible = false;
             SaveCurrentPosition();
         });
         _player.EndReached += (_, _) => UI(() =>
         {
-            PlayPauseIcon.Text = "▶";
+            PlayIcon.IsVisible = true; PauseIcon.IsVisible = false;
             // Mark as fully watched.
             if (_currentVideoResult is not null && DataContext is MainWindowViewModel vm)
             {
@@ -254,7 +254,7 @@ public partial class MainWindow : Window
 
     private void ResetTransport()
     {
-        PlayPauseIcon.Text = "▶";
+        PlayIcon.IsVisible = true; PauseIcon.IsVisible = false;
         SetSliderFromPlayer(0);
         DurationLabel.Text = "00:00";
         PositionSlider.IsEnabled = false;
@@ -558,7 +558,11 @@ public partial class MainWindow : Window
     }
 
     private void UpdateMuteIcon()
-        => MuteIcon.Text = (_isMuted || VolumeSlider.Value == 0) ? "🔇" : "🔊";
+    {
+        var muted = _isMuted || VolumeSlider.Value == 0;
+        VolumeOnIcon.IsVisible = !muted;
+        VolumeOffIcon.IsVisible = muted;
+    }
 
     private void Fullscreen_Click(object? sender, RoutedEventArgs e)
     {
@@ -679,20 +683,26 @@ public partial class MainWindow : Window
 
     private void RecentCard_PointerEntered(object? sender, PointerEventArgs e)
     {
-        if (sender is Button btn && FindPosterBorder(btn) is Border poster)
+        if (sender is not Button btn) return;
+        if (FindBorderByClass(btn, "poster") is Border poster)
             poster.BorderBrush = ResolveAccentBrush(btn);
+        if (FindBorderByClass(btn, "resume") is Border resume)
+            resume.IsVisible = true;
     }
 
     private void RecentCard_PointerExited(object? sender, PointerEventArgs e)
     {
-        if (sender is Button btn && FindPosterBorder(btn) is Border poster)
+        if (sender is not Button btn) return;
+        if (FindBorderByClass(btn, "poster") is Border poster)
             poster.BorderBrush = Avalonia.Media.Brushes.Transparent;
+        if (FindBorderByClass(btn, "resume") is Border resume)
+            resume.IsVisible = false;
     }
 
-    private static Border? FindPosterBorder(Control root)
+    private static Border? FindBorderByClass(Control root, string className)
     {
         foreach (var d in root.GetVisualDescendants())
-            if (d is Border b && b.Classes.Contains("poster")) return b;
+            if (d is Border b && b.Classes.Contains(className)) return b;
         return null;
     }
 
