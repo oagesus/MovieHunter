@@ -142,6 +142,24 @@
             <Setter Property="CornerRadius" Value="3"/>
         </Style>
 
+        <!-- Sidebar nav-rail buttons. 44×44, ghost by default, accent-soft
+             fill on hover. -->
+        <Style Selector="Button.nav">
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="16"/>
+        </Style>
+        <Style Selector="Button.nav /template/ ContentPresenter">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+
         <!-- Primary CTA — accent fill, pill shape, white label. From the
              design system: filled accent, 999 corner radius, medium weight,
              14px, ~24×8 padding. -->
@@ -343,7 +361,40 @@
             </StackPanel>
         </Grid>
 
-    <Grid Grid.Row="1" x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="12">
+    <!-- Body: 64px sidebar nav rail + main content. Per the design system,
+         the rail surfaces the three intent buckets (Search / Recently
+         watched / Settings) without breaking the existing window layout. -->
+    <Grid Grid.Row="1" ColumnDefinitions="64,*">
+
+        <Border Grid.Column="0" x:Name="SidebarRail"
+                Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,1,0">
+            <StackPanel Spacing="4" Margin="0,12">
+                <!-- Logo (accent square w/ play glyph) — placeholder mark -->
+                <Border Width="36" Height="36" Margin="0,0,0,8"
+                        HorizontalAlignment="Center"
+                        Background="{DynamicResource SystemAccentColorBrush}"
+                        CornerRadius="8">
+                    <TextBlock Text="▶"
+                               Foreground="White"
+                               FontSize="16"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <Button Classes="nav" Content="🔍"
+                        Click="NavSearch_Click"
+                        ToolTip.Tip="Search"/>
+                <Button Classes="nav" Content="🕐"
+                        Click="NavRecent_Click"
+                        ToolTip.Tip="Recently watched"/>
+                <Button Classes="nav" Content="⚙"
+                        Click="NavSettings_Click"
+                        ToolTip.Tip="Settings"/>
+            </StackPanel>
+        </Border>
+
+    <Grid Grid.Column="1" x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="12">
 
         <Grid x:Name="SearchBar" Grid.Row="0" ColumnDefinitions="*,110,Auto,Auto">
             <TextBox Grid.Column="0" x:Name="TitleBox" Margin="0,0,8,0"
@@ -352,7 +403,7 @@
             <TextBox Grid.Column="1" x:Name="YearBox" Margin="0,0,8,0"
                      PlaceholderText="Year"
                      Text="{Binding Year}"/>
-            <Button  Grid.Column="2" Content="⚙"
+            <Button  Grid.Column="2" x:Name="SettingsBtn" Content="⚙"
                      Width="32" Height="32" Padding="0" Margin="0,0,8,0"
                      VerticalAlignment="Center"
                      HorizontalContentAlignment="Center"
@@ -783,6 +834,7 @@
 
         <TextBlock x:Name="StatusText" Grid.Row="2" Text="{Binding Status}"
                    Margin="0,8,0,0" Opacity="0.85"/>
+    </Grid>
     </Grid>
     </Grid>
 </Window>

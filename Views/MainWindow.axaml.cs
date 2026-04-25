@@ -653,6 +653,30 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Sidebar nav rail handlers ─────────────────────────────────────
+    // Search: bring focus to the search field (acts like the "home" view).
+    private void NavSearch_Click(object? sender, RoutedEventArgs e)
+    {
+        TitleBox?.Focus();
+        TitleBox?.SelectAll();
+    }
+
+    // Recently watched: same as the back arrow — tear down current
+    // playback (if any) and show the overlay.
+    private void NavRecent_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_currentVideoResult is not null)
+            Back_Click(sender, e);
+    }
+
+    // Settings: open the existing search-bar Sources flyout (no need to
+    // duplicate its content — just delegate).
+    private void NavSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        if (SettingsBtn.Flyout is { } flyout)
+            flyout.ShowAt(SettingsBtn);
+    }
+
     private void RecentCard_PointerEntered(object? sender, PointerEventArgs e)
     {
         if (sender is Button btn && FindPosterBorder(btn) is Border poster)
