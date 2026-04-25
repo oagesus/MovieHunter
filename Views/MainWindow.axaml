@@ -142,6 +142,30 @@
             <Setter Property="CornerRadius" Value="3"/>
         </Style>
 
+        <!-- Primary CTA — accent fill, pill shape, white label. From the
+             design system: filled accent, 999 corner radius, medium weight,
+             14px, ~24×8 padding. -->
+        <Style Selector="Button.primary /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="999"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="24,8"/>
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.primary:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark2Brush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+
         <!-- Recently-watched card: suppress the default button hover
              overlay — hover styling lives on the inner poster Border
              below so the accent-colored outline hugs the poster only
@@ -394,7 +418,7 @@
                     </Flyout>
                 </Button.Flyout>
             </Button>
-            <Button  Grid.Column="3" Content="Search" MinWidth="90"
+            <Button  Grid.Column="3" Classes="primary" Content="Search" MinWidth="90"
                      Command="{Binding SearchCommand}"
                      IsEnabled="{Binding !IsSearching}"/>
         </Grid>
@@ -435,7 +459,7 @@
                                 <Border Grid.Column="0" Width="60" Height="90"
                                         Margin="0,0,6,0"
                                         Background="#22000000"
-                                        CornerRadius="3"
+                                        CornerRadius="6"
                                         ClipToBounds="True">
                                     <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
                                            Stretch="UniformToFill"/>
