@@ -278,6 +278,7 @@
             <TextBlock Grid.Column="0"
                        Text="MovieHunter"
                        FontWeight="SemiBold"
+                       FontSize="13"
                        VerticalAlignment="Center"
                        Margin="12,0,8,0"/>
             <Button Grid.Column="1"
