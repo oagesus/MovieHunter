@@ -282,16 +282,25 @@
                        VerticalAlignment="Center"
                        Margin="12,0,8,0"/>
             <Button Grid.Column="1"
-                    Content="◐"
                     ToolTip.Tip="Theme"
                     Width="28" Height="28"
                     Padding="0"
                     Background="Transparent"
                     BorderBrush="Transparent"
                     Cursor="Arrow"
-                    FontSize="14"
                     HorizontalContentAlignment="Center"
                     VerticalContentAlignment="Center">
+                <Viewbox Width="14" Height="14">
+                    <Grid Width="24" Height="24">
+                        <!-- Lucide palette: round body w/ paint dots, fits a
+                             "theme picker" affordance better than a half-circle. -->
+                        <Path Data="M 12 2 a 10 10 0 1 0 0 20 a 4 4 0 0 1 0 -8 a 4 4 0 0 0 0 -8 z M 9 8 a 1 1 0 1 0 0 0 z M 16 6 a 1 1 0 1 0 0 0 z M 18 11 a 1 1 0 1 0 0 0 z M 14 17 a 1 1 0 1 0 0 0 z"
+                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.6"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="Transparent"/>
+                    </Grid>
+                </Viewbox>
                 <Button.Flyout>
                     <Flyout Placement="Bottom">
                         <StackPanel Width="200" Spacing="4">
@@ -349,16 +358,45 @@
                 </Button.Flyout>
             </Button>
             <StackPanel Grid.Column="3" Orientation="Horizontal">
-                <Button Classes="caption" Content="&#x2013;"
+                <Button Classes="caption"
                         Click="Minimize_Click"
-                        ToolTip.Tip="Minimize"/>
-                <Button Classes="caption" Content="&#x25A1;"
+                        ToolTip.Tip="Minimize">
+                    <Viewbox Width="12" Height="12">
+                        <Grid Width="24" Height="24">
+                            <Path Data="M 5 12 H 19"
+                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                  StrokeThickness="1.6"
+                                  StrokeLineCap="Round"/>
+                        </Grid>
+                    </Viewbox>
+                </Button>
+                <Button Classes="caption"
                         x:Name="MaxRestoreBtn"
                         Click="MaxRestore_Click"
-                        ToolTip.Tip="Maximize"/>
-                <Button Classes="caption close" Content="&#x2715;"
+                        ToolTip.Tip="Maximize">
+                    <Viewbox Width="12" Height="12">
+                        <Grid Width="24" Height="24">
+                            <Path Data="M 4 4 H 20 V 20 H 4 Z"
+                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                  StrokeThickness="1.6"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
+                    </Viewbox>
+                </Button>
+                <Button Classes="caption close"
                         Click="CloseWindow_Click"
-                        ToolTip.Tip="Close"/>
+                        ToolTip.Tip="Close">
+                    <Viewbox Width="12" Height="12">
+                        <Grid Width="24" Height="24">
+                            <Path x:Name="CloseGlyph"
+                                  Data="M 18 6 L 6 18 M 6 6 L 18 18"
+                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                  StrokeThickness="1.6"
+                                  StrokeLineCap="Round"/>
+                        </Grid>
+                    </Viewbox>
+                </Button>
             </StackPanel>
         </Grid>
 
@@ -372,48 +410,59 @@
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,0,1,0">
             <StackPanel Spacing="4" Margin="0,12">
-                <!-- Logo (accent square w/ play glyph) — placeholder mark -->
-                <Border Width="36" Height="36" Margin="0,0,0,8"
-                        HorizontalAlignment="Center"
-                        Background="{DynamicResource SystemAccentColorBrush}"
-                        CornerRadius="8">
-                    <TextBlock Text="▶"
-                               Foreground="White"
-                               FontSize="16"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"/>
-                </Border>
+                <!-- Logo mark — stroke-only rounded square + play triangle
+                     in the active theme's accent. Matches assets/logo-mark.svg
+                     from the design system. -->
+                <Viewbox Width="32" Height="32"
+                         HorizontalAlignment="Center"
+                         Margin="0,0,0,8">
+                    <Grid Width="32" Height="32">
+                        <Path Data="M 3 3 H 26 a 3 3 0 0 1 3 3 V 26 a 3 3 0 0 1 -3 3 H 6 a 3 3 0 0 1 -3 -3 Z M 13 11 L 22 16 L 13 21 Z"
+                              Stroke="{DynamicResource SystemAccentColorBrush}"
+                              StrokeThickness="1.6"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="Transparent"/>
+                    </Grid>
+                </Viewbox>
                 <Button Classes="nav"
                         Click="NavSearch_Click"
                         ToolTip.Tip="Search">
                     <Viewbox Width="20" Height="20">
-                        <Path Data="M 11 3 a 8 8 0 1 0 0 16 a 8 8 0 1 0 0 -16 M 21 21 L 16.65 16.65"
-                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                              StrokeThickness="1.8"
-                              StrokeLineCap="Round" StrokeJoin="Round"
-                              Fill="Transparent"/>
+                        <Grid Width="24" Height="24">
+                            <Path Data="M 11 3 a 8 8 0 1 0 0 16 a 8 8 0 1 0 0 -16 M 21 21 L 16.65 16.65"
+                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                  StrokeThickness="1.8"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
                     </Viewbox>
                 </Button>
                 <Button Classes="nav"
                         Click="NavRecent_Click"
                         ToolTip.Tip="Recently watched">
                     <Viewbox Width="20" Height="20">
-                        <Path Data="M 12 2 a 10 10 0 1 0 0 20 a 10 10 0 1 0 0 -20 M 12 6 V 12 L 16 14"
-                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                              StrokeThickness="1.8"
-                              StrokeLineCap="Round" StrokeJoin="Round"
-                              Fill="Transparent"/>
+                        <Grid Width="24" Height="24">
+                            <Path Data="M 12 2 a 10 10 0 1 0 0 20 a 10 10 0 1 0 0 -20 M 12 6 V 12 L 16 14"
+                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                  StrokeThickness="1.8"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
                     </Viewbox>
                 </Button>
                 <Button Classes="nav"
                         Click="NavSettings_Click"
                         ToolTip.Tip="Settings">
                     <Viewbox Width="20" Height="20">
-                        <Path Data="M 12 2 v 2.2 M 12 19.8 V 22 M 19.8 12 H 22 M 2 12 h 2.2 M 17.5 6.5 l 1.6 -1.6 M 4.9 19.1 l 1.6 -1.6 M 17.5 17.5 l 1.6 1.6 M 4.9 4.9 l 1.6 1.6 M 12 8 a 4 4 0 1 0 0 8 a 4 4 0 1 0 0 -8"
-                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                              StrokeThickness="1.8"
-                              StrokeLineCap="Round" StrokeJoin="Round"
-                              Fill="Transparent"/>
+                        <Grid Width="24" Height="24">
+                            <!-- Sliders icon (Lucide) — fits the "Sources" flyout
+                                 better than a gear and is much simpler to render. -->
+                            <Path Data="M 4 21 v -7 M 4 10 V 3 M 12 21 v -9 M 12 8 V 3 M 20 21 v -5 M 20 12 V 3 M 1 14 h 6 M 9 8 h 6 M 17 16 h 6"
+                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                  StrokeThickness="1.8"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
                     </Viewbox>
                 </Button>
             </StackPanel>
@@ -428,12 +477,21 @@
             <TextBox Grid.Column="1" x:Name="YearBox" Margin="0,0,8,0"
                      PlaceholderText="Year"
                      Text="{Binding Year}"/>
-            <Button  Grid.Column="2" x:Name="SettingsBtn" Content="⚙"
+            <Button  Grid.Column="2" x:Name="SettingsBtn"
                      Width="32" Height="32" Padding="0" Margin="0,0,8,0"
                      VerticalAlignment="Center"
                      HorizontalContentAlignment="Center"
                      VerticalContentAlignment="Center"
                      ToolTip.Tip="Sources">
+                <Viewbox Width="18" Height="18">
+                    <Grid Width="24" Height="24">
+                        <Path Data="M 4 21 v -7 M 4 10 V 3 M 12 21 v -9 M 12 8 V 3 M 20 21 v -5 M 20 12 V 3 M 1 14 h 6 M 9 8 h 6 M 17 16 h 6"
+                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="Transparent"/>
+                    </Grid>
+                </Viewbox>
                 <Button.Flyout>
                     <Flyout Placement="Bottom" Opened="SourcesFlyout_Opened">
                         <StackPanel x:Name="SourcesFlyoutPanel"
@@ -631,10 +689,12 @@
                                 Click="Back_Click">
                             <Border Classes="transport-icon">
                                 <Viewbox Width="28" Height="28">
-                                    <Path Data="M 12 19 L 5 12 L 12 5 M 19 12 H 5"
-                                          Stroke="White" StrokeThickness="1.8"
-                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                          Fill="Transparent"/>
+                                    <Grid Width="24" Height="24">
+                                        <Path Data="M 12 19 L 5 12 L 12 5 M 19 12 H 5"
+                                              Stroke="White" StrokeThickness="1.8"
+                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                              Fill="Transparent"/>
+                                    </Grid>
                                 </Viewbox>
                             </Border>
                         </Button>
@@ -806,10 +866,12 @@
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
                                             <Viewbox Width="26" Height="26">
-                                                <Path Data="M 3 12 a 9 9 0 1 0 3 -7.7 L 3 8 M 3 3 v 5 h 5"
-                                                      Stroke="White" StrokeThickness="1.8"
-                                                      StrokeLineCap="Round" StrokeJoin="Round"
-                                                      Fill="Transparent"/>
+                                                <Grid Width="24" Height="24">
+                                                    <Path Data="M 3 12 a 9 9 0 1 0 3 -7.7 L 3 8 M 3 3 v 5 h 5"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
                                             </Viewbox>
                                         </Border>
                                     </Button>
@@ -818,10 +880,12 @@
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
                                             <Viewbox Width="26" Height="26">
-                                                <Path Data="M 21 12 a 9 9 0 1 1 -3 -7.7 L 21 8 M 21 3 v 5 h -5"
-                                                      Stroke="White" StrokeThickness="1.8"
-                                                      StrokeLineCap="Round" StrokeJoin="Round"
-                                                      Fill="Transparent"/>
+                                                <Grid Width="24" Height="24">
+                                                    <Path Data="M 21 12 a 9 9 0 1 1 -3 -7.7 L 21 8 M 21 3 v 5 h -5"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
                                             </Viewbox>
                                         </Border>
                                     </Button>
@@ -884,10 +948,12 @@
                                             Click="Fullscreen_Click">
                                         <Border Classes="transport-icon">
                                             <Viewbox Width="26" Height="26">
-                                                <Path Data="M 8 3 H 5 a 2 2 0 0 0 -2 2 v 3 M 21 8 V 5 a 2 2 0 0 0 -2 -2 h -3 M 3 16 v 3 a 2 2 0 0 0 2 2 h 3 M 16 21 h 3 a 2 2 0 0 0 2 -2 v -3"
-                                                      Stroke="White" StrokeThickness="1.8"
-                                                      StrokeLineCap="Round" StrokeJoin="Round"
-                                                      Fill="Transparent"/>
+                                                <Grid Width="24" Height="24">
+                                                    <Path Data="M 8 3 H 5 a 2 2 0 0 0 -2 2 v 3 M 21 8 V 5 a 2 2 0 0 0 -2 -2 h -3 M 3 16 v 3 a 2 2 0 0 0 2 2 h 3 M 16 21 h 3 a 2 2 0 0 0 2 -2 v -3"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
                                             </Viewbox>
                                         </Border>
                                     </Button>
