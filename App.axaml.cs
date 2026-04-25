@@ -19,6 +19,9 @@ public partial class App : Application
     private static ResourceDictionary? _primeVideoOverrides;
     private static ResourceDictionary? _disneyPlusOverrides;
     private static ResourceDictionary? _catppuccinOverrides;
+    private static ResourceDictionary? _lightLavenderOverrides;
+    private static ResourceDictionary? _lightMintOverrides;
+    private static ResourceDictionary? _lightApricotOverrides;
 
     public override void Initialize()
     {
@@ -49,6 +52,9 @@ public partial class App : Application
         app.Resources.MergedDictionaries.Remove(GetPrimeVideoOverrides());
         app.Resources.MergedDictionaries.Remove(GetDisneyPlusOverrides());
         app.Resources.MergedDictionaries.Remove(GetCatppuccinOverrides());
+        app.Resources.MergedDictionaries.Remove(GetLightLavenderOverrides());
+        app.Resources.MergedDictionaries.Remove(GetLightMintOverrides());
+        app.Resources.MergedDictionaries.Remove(GetLightApricotOverrides());
 
         switch (theme)
         {
@@ -78,6 +84,19 @@ public partial class App : Application
                 app.RequestedThemeVariant = ThemeVariant.Dark;
                 app.Resources.MergedDictionaries.Add(GetCatppuccinOverrides());
                 break;
+            // Calm-cinema pastel themes — Light base + soft accent.
+            case "LightLavender":
+                app.RequestedThemeVariant = ThemeVariant.Light;
+                app.Resources.MergedDictionaries.Add(GetLightLavenderOverrides());
+                break;
+            case "LightMint":
+                app.RequestedThemeVariant = ThemeVariant.Light;
+                app.Resources.MergedDictionaries.Add(GetLightMintOverrides());
+                break;
+            case "LightApricot":
+                app.RequestedThemeVariant = ThemeVariant.Light;
+                app.Resources.MergedDictionaries.Add(GetLightApricotOverrides());
+                break;
             default:
                 app.RequestedThemeVariant = ThemeVariant.Default;
                 break;
@@ -103,4 +122,16 @@ public partial class App : Application
     private static ResourceDictionary GetCatppuccinOverrides() =>
         _catppuccinOverrides ??= (ResourceDictionary)AvaloniaXamlLoader.Load(
             new Uri("avares://MovieHunter/Themes/CatppuccinOverrides.axaml"));
+
+    private static ResourceDictionary GetLightLavenderOverrides() =>
+        _lightLavenderOverrides ??= (ResourceDictionary)AvaloniaXamlLoader.Load(
+            new Uri("avares://MovieHunter/Themes/LightLavenderOverrides.axaml"));
+
+    private static ResourceDictionary GetLightMintOverrides() =>
+        _lightMintOverrides ??= (ResourceDictionary)AvaloniaXamlLoader.Load(
+            new Uri("avares://MovieHunter/Themes/LightMintOverrides.axaml"));
+
+    private static ResourceDictionary GetLightApricotOverrides() =>
+        _lightApricotOverrides ??= (ResourceDictionary)AvaloniaXamlLoader.Load(
+            new Uri("avares://MovieHunter/Themes/LightApricotOverrides.axaml"));
 }

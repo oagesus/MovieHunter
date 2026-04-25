@@ -363,6 +363,9 @@ public partial class MainWindow : Window
                 case "PrimeVideo": PrimeVideoThemeRadio.IsChecked = true; break;
                 case "DisneyPlus": DisneyPlusThemeRadio.IsChecked = true; break;
                 case "Catppuccin": CatppuccinThemeRadio.IsChecked = true; break;
+                case "LightLavender": LightLavenderThemeRadio.IsChecked = true; break;
+                case "LightMint": LightMintThemeRadio.IsChecked = true; break;
+                case "LightApricot": LightApricotThemeRadio.IsChecked = true; break;
                 default: SystemThemeRadio.IsChecked = true; break;
             }
         }
@@ -608,6 +611,15 @@ public partial class MainWindow : Window
 
     private void CatppuccinTheme_Checked(object? sender, RoutedEventArgs e)
         => SelectTheme(sender, "Catppuccin");
+
+    private void LightLavenderTheme_Checked(object? sender, RoutedEventArgs e)
+        => SelectTheme(sender, "LightLavender");
+
+    private void LightMintTheme_Checked(object? sender, RoutedEventArgs e)
+        => SelectTheme(sender, "LightMint");
+
+    private void LightApricotTheme_Checked(object? sender, RoutedEventArgs e)
+        => SelectTheme(sender, "LightApricot");
 
     private void SelectTheme(object? sender, string theme)
     {

@@ -73,7 +73,9 @@ public partial class SourcesSettings : ObservableObject
                     if (t == "System" || t == "Light" || t == "Dark"
                         || t == "Dracula" || t == "Netflix"
                         || t == "PrimeVideo" || t == "DisneyPlus"
-                        || t == "Catppuccin") Theme = t;
+                        || t == "Catppuccin"
+                        || t == "LightLavender" || t == "LightMint"
+                        || t == "LightApricot") Theme = t;
                 }
 
                 if (root.TryGetProperty("volume", out var vol)

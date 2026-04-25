@@ -266,6 +266,20 @@
                                          GroupName="Theme"
                                          IsCheckedChanged="DarkTheme_Checked"/>
                             <Separator Margin="0,4"/>
+                            <TextBlock Text="PASTEL THEMES" FontSize="11" Opacity="0.6"/>
+                            <RadioButton x:Name="LightLavenderThemeRadio"
+                                         Content="Lavender"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="LightLavenderTheme_Checked"/>
+                            <RadioButton x:Name="LightMintThemeRadio"
+                                         Content="Mint"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="LightMintTheme_Checked"/>
+                            <RadioButton x:Name="LightApricotThemeRadio"
+                                         Content="Apricot"
+                                         GroupName="Theme"
+                                         IsCheckedChanged="LightApricotTheme_Checked"/>
+                            <Separator Margin="0,4"/>
                             <TextBlock Text="CUSTOM THEMES" FontSize="11" Opacity="0.6"/>
                             <RadioButton x:Name="CatppuccinThemeRadio"
                                          Content="Catppuccin"

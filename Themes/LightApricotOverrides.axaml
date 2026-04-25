@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Light Pastel Apricot — calm-cinema sibling palette.
+         Soft apricot accent (#E8A76B) on warm-tinted near-white. -->
+
+    <Color x:Key="SystemAccentColor">#E8A76B</Color>
+    <Color x:Key="SystemAccentColorLight1">#EFB682</Color>
+    <Color x:Key="SystemAccentColorLight2">#F4C599</Color>
+    <Color x:Key="SystemAccentColorLight3">#F8D4B0</Color>
+    <Color x:Key="SystemAccentColorDark1">#DD9450</Color>
+    <Color x:Key="SystemAccentColorDark2">#C97B36</Color>
+    <Color x:Key="SystemAccentColorDark3">#A56326</Color>
+
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#E8A76B"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#EFB682"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#F4C599"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#F8D4B0"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#DD9450"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#C97B36"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#A56326"/>
+
+    <Color x:Key="SolidBackgroundFillColorBase">#FEFAF5</Color>
+    <Color x:Key="SolidBackgroundFillColorSecondary">#FAF1E6</Color>
+    <Color x:Key="SolidBackgroundFillColorTertiary">#F4E6D2</Color>
+    <Color x:Key="SolidBackgroundFillColorQuarternary">#FFFFFF</Color>
+
+    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#FEFAF5"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#FAF1E6"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#F4E6D2"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#FFFFFF"/>
+
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="#FEFAF5"/>
+</ResourceDictionary>

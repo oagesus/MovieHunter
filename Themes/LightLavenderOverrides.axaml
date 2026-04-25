@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Light Pastel Lavender — the canonical theme for the
+         "calm-cinema" design system. Soft lavender accent
+         (#9F8AE6) on warm-tinted near-white surfaces. -->
+
+    <!-- Accent -->
+    <Color x:Key="SystemAccentColor">#9F8AE6</Color>
+    <Color x:Key="SystemAccentColorLight1">#B099EC</Color>
+    <Color x:Key="SystemAccentColorLight2">#C0A8F1</Color>
+    <Color x:Key="SystemAccentColorLight3">#D0BCF6</Color>
+    <Color x:Key="SystemAccentColorDark1">#8C75DD</Color>
+    <Color x:Key="SystemAccentColorDark2">#7860D0</Color>
+    <Color x:Key="SystemAccentColorDark3">#5B47B0</Color>
+
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#9F8AE6"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#B099EC"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#C0A8F1"/>
+    <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#D0BCF6"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#8C75DD"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#7860D0"/>
+    <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#5B47B0"/>
+
+    <!-- Surfaces (FluentTheme Light fill resources) -->
+    <Color x:Key="SolidBackgroundFillColorBase">#FBFAFE</Color>
+    <Color x:Key="SolidBackgroundFillColorSecondary">#F4F1FB</Color>
+    <Color x:Key="SolidBackgroundFillColorTertiary">#ECE7F7</Color>
+    <Color x:Key="SolidBackgroundFillColorQuarternary">#FFFFFF</Color>
+
+    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#FBFAFE"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#F4F1FB"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#ECE7F7"/>
+    <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#FFFFFF"/>
+
+    <!-- Window background -->
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="#FBFAFE"/>
+</ResourceDictionary>
