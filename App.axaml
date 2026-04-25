@@ -9,12 +9,12 @@
     </Application.DataTemplates>
 
     <Application.Resources>
-        <!-- Calm-cinema design system: replace FluentTheme's default
-             Segoe UI with Inter (already bundled via Avalonia.Fonts.Inter).
-             Inter is the closest free cousin of Manrope (called for in
-             the design spec) and gives us the same clean, low-personality
-             feel without bundling new font files. -->
-        <FontFamily x:Key="ContentControlThemeFontFamily">Inter</FontFamily>
+        <!-- Calm-cinema design system: prefer Manrope (the spec's choice)
+             if installed system-wide, otherwise fall through to Inter
+             (already bundled via Avalonia.Fonts.Inter and registered in
+             Program.cs via .WithInterFont()). Both are clean, low-
+             personality sans-serifs. -->
+        <FontFamily x:Key="ContentControlThemeFontFamily">Manrope, Inter, Segoe UI, sans-serif</FontFamily>
     </Application.Resources>
 
     <Application.Styles>
