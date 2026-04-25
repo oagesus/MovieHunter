@@ -407,7 +407,7 @@
 
             <Border x:Name="ResultsPanel" Grid.Column="0"
                     BorderBrush="#33000000" BorderThickness="1"
-                    CornerRadius="4" Margin="0,0,12,0"
+                    CornerRadius="12" Margin="0,0,12,0"
                     ClipToBounds="True">
                 <ListBox ItemsSource="{Binding Results}"
                          SelectedItem="{Binding SelectedResult}"
@@ -593,7 +593,7 @@
                                                          bounds and same radius. -->
                                                     <Grid Width="140" Height="210">
                                                         <Border Background="#33000000"
-                                                                CornerRadius="6"
+                                                                CornerRadius="12"
                                                                 ClipToBounds="True">
                                                             <Panel>
                                                                 <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
@@ -616,7 +616,7 @@
                                                             </Panel>
                                                         </Border>
                                                         <Border Classes="poster"
-                                                                CornerRadius="6"
+                                                                CornerRadius="12"
                                                                 BorderThickness="2"
                                                                 BorderBrush="Transparent"
                                                                 IsHitTestVisible="False"/>
