@@ -423,8 +423,11 @@
 
     <!-- Body: 64px sidebar nav rail + main content. Per the design system,
          the rail surfaces the three intent buckets (Search / Recently
-         watched / Settings) without breaking the existing window layout. -->
-    <Grid Grid.Row="1" ColumnDefinitions="64,*">
+         watched / Settings) without breaking the existing window layout.
+         BodyGrid is named so ToggleFullscreen can collapse column 0 to
+         zero (the column is fixed-width, so hiding SidebarRail alone
+         would leave an empty 64px slot). -->
+    <Grid Grid.Row="1" x:Name="BodyGrid" ColumnDefinitions="64,*">
 
         <Border Grid.Column="0" x:Name="SidebarRail"
                 Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"

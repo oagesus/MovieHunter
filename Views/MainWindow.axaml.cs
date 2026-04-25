@@ -894,6 +894,7 @@ public partial class MainWindow : Window
             ResultsPanel.IsVisible = true;
             StatusText.IsVisible = true;
             SidebarRail.IsVisible = true;
+            BodyGrid.ColumnDefinitions[0].Width = new GridLength(64);
             ContentGrid.ColumnDefinitions[0].Width = new GridLength(380);
             RootGrid.Margin = new Thickness(12);
             ContentGrid.Margin = new Thickness(0, 12, 0, 0);
@@ -923,6 +924,7 @@ public partial class MainWindow : Window
             ResultsPanel.IsVisible = false;
             StatusText.IsVisible = false;
             SidebarRail.IsVisible = false;
+            BodyGrid.ColumnDefinitions[0].Width = new GridLength(0);
             ContentGrid.ColumnDefinitions[0].Width = new GridLength(0);
             RootGrid.Margin = new Thickness(0);
             ContentGrid.Margin = new Thickness(0);
