@@ -18,8 +18,14 @@ public partial class RecentWatch : ObservableObject
     public string? Year { get; init; }
     public string? Duration { get; init; }
 
-    [ObservableProperty] private long _positionMs;
-    [ObservableProperty] private long _lengthMs;
+    // NotifyPropertyChangedFor(Progress) so the bound progress bar
+    // updates as the player ticks (UpdatePositionAndSave on pause/seek
+    // mutates these fields in place — the computed Progress wouldn't
+    // otherwise raise PropertyChanged on its own).
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Progress))]
+    private long _positionMs;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Progress))]
+    private long _lengthMs;
     [ObservableProperty] private DateTime _lastWatchedUtc = DateTime.UtcNow;
 
     /// <summary>0.0 – 1.0 fraction watched, 0 when length is unknown.</summary>
@@ -141,6 +147,42 @@ public class RecentlyWatched
         });
 
         Save();
+    }
+
+    /// <summary>
+    /// Updates an existing entry's progress in place (no remove + insert)
+    /// so the bound UI doesn't recreate the card's visual container —
+    /// avoids the brief overlay flicker on pause / close. Falls back to
+    /// <see cref="UpsertAndSave"/> if no entry exists yet for the URL.
+    /// </summary>
+    public void UpdatePositionAndSave(VideoResult source, long positionMs, long lengthMs)
+    {
+        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
+        var existing = Items.FirstOrDefault(i => i.PageUrl == source.PageUrl);
+        if (existing is null)
+        {
+            UpsertAndSave(source, positionMs, lengthMs);
+            return;
+        }
+        existing.PositionMs = Math.Max(0, positionMs);
+        existing.LengthMs = Math.Max(0, lengthMs);
+        existing.LastWatchedUtc = DateTime.UtcNow;
+        Save();
+    }
+
+    /// <summary>
+    /// In-memory-only update so the bound progress bar can tick along
+    /// with the player without hammering disk on every TimeChanged.
+    /// Persistence still happens on pause / close / end via
+    /// <see cref="UpdatePositionAndSave"/>.
+    /// </summary>
+    public void UpdatePositionInMemory(VideoResult source, long positionMs, long lengthMs)
+    {
+        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
+        var existing = Items.FirstOrDefault(i => i.PageUrl == source.PageUrl);
+        if (existing is null) return;
+        existing.PositionMs = Math.Max(0, positionMs);
+        existing.LengthMs = Math.Max(0, lengthMs);
     }
 
     public RecentWatch? Find(string pageUrl) =>

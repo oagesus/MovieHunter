@@ -34,4 +34,6 @@
 
     <!-- Window background resource used by FluentTheme Dark. -->
     <SolidColorBrush x:Key="SystemRegionBrush" Color="#0F171E"/>
+
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#232F3E"/>
 </ResourceDictionary>

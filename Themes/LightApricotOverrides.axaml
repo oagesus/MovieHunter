@@ -30,4 +30,6 @@
     <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#FFFFFF"/>
 
     <SolidColorBrush x:Key="SystemRegionBrush" Color="#FEFAF5"/>
+
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#FBEBD6"/>
 </ResourceDictionary>

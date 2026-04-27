@@ -34,4 +34,7 @@
 
     <!-- Window background -->
     <SolidColorBrush x:Key="SystemRegionBrush" Color="#FBFAFE"/>
+
+    <!-- Accent-soft: tinted surface for active states (theme pills, etc.). -->
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#EFE9FB"/>
 </ResourceDictionary>

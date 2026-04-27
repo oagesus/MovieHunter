@@ -53,6 +53,10 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool _isSearching;
     [ObservableProperty] private string? _status = "Enter a title and click Search.";
     [ObservableProperty] private VideoResult? _selectedResult;
+    // The Title field at the moment the last search ran — used to render
+    // "<N> results for '<query>'." in the status bar even after the user
+    // edits the Title field.
+    [ObservableProperty] private string _lastSearchTitle = "";
 
     public ObservableCollection<VideoResult> Results { get; } = new();
 
@@ -65,6 +69,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _cts = new CancellationTokenSource();
         Results.Clear();
         IsSearching = true;
+        LastSearchTitle = Title;
         Status = "Searching…";
 
         try
@@ -79,9 +84,12 @@ public partial class MainWindowViewModel : ViewModelBase
             foreach (var r in batch) Results.Add(r);
 
             var unresponsive = _search.LastUnresponsiveEngines;
+            var summary = string.IsNullOrEmpty(LastSearchTitle)
+                ? $"Found {Results.Count} search results."
+                : $"Found {Results.Count} search results for '{LastSearchTitle}'.";
             Status = unresponsive.Count > 0
-                ? $"Done — {Results.Count} result(s). Slow/failed: {string.Join(", ", unresponsive)}"
-                : $"Done — {Results.Count} total result(s).";
+                ? $"{summary} Slow/failed: {string.Join(", ", unresponsive)}"
+                : summary;
         }
         catch (OperationCanceledException)
         {
@@ -107,9 +115,10 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        Status = string.IsNullOrWhiteSpace(stream.AudioUrl)
-            ? "Playing."
-            : "Playing (video + separate audio track).";
+        // Just kicked off VLC — playback hasn't actually started yet.
+        // The MainWindow's Playing event handler flips this to "Playing." once
+        // frames are arriving.
+        Status = "Loading…";
         PlayRequested?.Invoke(stream, result, startPosMs);
     }
 

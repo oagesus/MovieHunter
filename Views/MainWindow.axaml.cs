@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -26,6 +27,33 @@ public partial class MainWindow : Window
     private readonly MediaPlayer _player;
     private Media? _currentMedia;
     private VideoResult? _currentVideoResult;
+    // Optimistic-highlight target: the PageUrl the user just clicked in
+    // the Recently watched panel. Drives "Currently playing" on the
+    // tapped card during the brief stream-URL-extraction delay before
+    // OnPlayRequested actually sets _currentVideoResult.
+    private string? _pendingPlayingPageUrl;
+    // Which view the user was on when playback started — Back_Click restores it.
+    private enum AppView { Search, RecentlyWatched, Settings }
+    private AppView _originView = AppView.Search;
+    // Currently-active sidebar tab. Tracks where the user is so PiP restore
+    // can return playback to the right place.
+    private AppView _activeTab = AppView.Search;
+
+    // Picture-in-picture state.
+    private bool _isPipMode;
+    private bool _pipDragging;
+    private Point _pipDragStart;
+    private Thickness _pipMarginAtDragStart;
+    private bool _pipResizing;
+    private Point _pipResizeStart;
+    private Size _pipSizeAtResizeStart;
+    private Thickness _pipMarginAtResizeStart;
+    private string _pipResizeCorner = "BR";
+    private DispatcherTimer? _pipHideUiTimer;
+    private const double PipPaddingFromEdges = 16;
+    private const double PipWidth = 320;
+    private const double PipHeight = 180;
+    private const double PipAspect = PipWidth / PipHeight;
     private long _pendingSeekMs;
     private bool _isSliderUpdatingFromPlayer;
     private WindowState _preFullScreenState = WindowState.Normal;
@@ -82,6 +110,11 @@ public partial class MainWindow : Window
 
         PositionSlider.ValueChanged += OnPositionSliderChanged;
         PositionSlider.IsEnabled = false;
+        PipPositionSlider.ValueChanged += OnPositionSliderChanged;
+        PipPositionSlider.IsEnabled = false;
+
+        // Highlight the initial sidebar tab (Search by default).
+        UpdateActiveNavTab();
 
         VideoOverlayRoot.PointerMoved += OnOverlayPointerMoved;
         VideoOverlayRoot.PointerEntered += OnOverlayPointerMoved;
@@ -180,6 +213,9 @@ public partial class MainWindow : Window
                 PixelFormat.Bgra8888,
                 AlphaFormat.Premul);
             VideoImage.Source = b;
+            // PipImage shares the same bitmap so PiP mode can mirror frames
+            // without an extra render pass.
+            if (PipImage is not null) PipImage.Source = b;
             return b;
         });
 
@@ -214,14 +250,23 @@ public partial class MainWindow : Window
 
     private void VideoDisplay(IntPtr opaque, IntPtr picture)
     {
-        Dispatcher.UIThread.Post(() => VideoImage.InvalidateVisual());
+        Dispatcher.UIThread.Post(() =>
+        {
+            VideoImage.InvalidateVisual();
+            if (_isPipMode) PipImage?.InvalidateVisual();
+        });
     }
 
     private void WirePlayerEvents()
     {
         _player.Playing += (_, _) => UI(() =>
         {
-            PlayIcon.IsVisible = false; PauseIcon.IsVisible = true;
+            SetPlayPauseIcons(playing: true);
+            // Frames are arriving — drop the loading overlays and flip
+            // the bottom-bar status from "Loading…" to "Playing.".
+            SetLoadingState(false);
+            if (DataContext is MainWindowViewModel vmStatus)
+                vmStatus.Status = "Playing.";
             // Apply a saved resume position once playback is underway and
             // the stream is seekable / we know its length.
             if (_pendingSeekMs > 0 && _player.IsSeekable && _player.Length > 0)
@@ -232,20 +277,30 @@ public partial class MainWindow : Window
         });
         _player.Paused += (_, _) => UI(() =>
         {
-            PlayIcon.IsVisible = true; PauseIcon.IsVisible = false;
+            SetPlayPauseIcons(playing: false);
             SaveCurrentPosition();
         });
         _player.EndReached += (_, _) => UI(() =>
         {
-            PlayIcon.IsVisible = true; PauseIcon.IsVisible = false;
-            // Mark as fully watched.
+            SetPlayPauseIcons(playing: false);
+            // Mark as fully watched. In-place update — the card's already
+            // at the top from OnPlayRequested, so we don't need a re-insert
+            // (which would destroy and recreate its visual and flicker).
             if (_currentVideoResult is not null && DataContext is MainWindowViewModel vm)
             {
                 var len = _player.Length;
-                vm.Recent.UpsertAndSave(_currentVideoResult, len > 0 ? len : 0, len);
+                vm.Recent.UpdatePositionAndSave(_currentVideoResult, len > 0 ? len : 0, len);
             }
         });
-        _player.Stopped    += (_, _) => UI(ResetTransport);
+        _player.Stopped    += (_, _) => UI(() =>
+        {
+            // Only reset the transport when the user actually closed the
+            // video (Back_Click / Close clears _currentVideoResult first).
+            // For natural end-of-stream we leave the slider at 100% and
+            // the time label as-is, so the media stays "loaded" visually
+            // and the user can seek back to replay parts.
+            if (_currentVideoResult is null) ResetTransport();
+        });
         _player.TimeChanged   += OnTimeChanged;
         _player.LengthChanged += OnLengthChanged;
     }
@@ -254,10 +309,22 @@ public partial class MainWindow : Window
 
     private void ResetTransport()
     {
-        PlayIcon.IsVisible = true; PauseIcon.IsVisible = false;
+        SetPlayPauseIcons(playing: false);
         SetSliderFromPlayer(0);
         DurationLabel.Text = "00:00";
+        if (PipDurationLabel is not null) PipDurationLabel.Text = "00:00";
         PositionSlider.IsEnabled = false;
+        if (PipPositionSlider is not null) PipPositionSlider.IsEnabled = false;
+    }
+
+    // Updates the play/pause icon on both the main transport bar and the
+    // PiP mini-transport so they stay in lockstep with the player.
+    private void SetPlayPauseIcons(bool playing)
+    {
+        PlayIcon.IsVisible = !playing;
+        PauseIcon.IsVisible = playing;
+        if (PipPlayIcon is not null) PipPlayIcon.IsVisible = !playing;
+        if (PipPauseIcon is not null) PipPauseIcon.IsVisible = playing;
     }
 
     private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e)
@@ -270,13 +337,26 @@ public partial class MainWindow : Window
             if (length > 0)
             {
                 PositionSlider.IsEnabled = _player.IsSeekable;
+                if (PipPositionSlider is not null)
+                    PipPositionSlider.IsEnabled = _player.IsSeekable;
                 SetSliderFromPlayer((double)e.Time / length * 1000.0);
-                DurationLabel.Text = FormatTime(
+                var remaining = FormatTime(
                     TimeSpan.FromMilliseconds(Math.Max(0, length - e.Time)));
+                DurationLabel.Text = remaining;
+                if (PipDurationLabel is not null) PipDurationLabel.Text = remaining;
+                // Push the live position into the matching Recent entry so
+                // its progress bar tracks playback. In-memory only — disk
+                // save still happens on pause / close / end.
+                if (_currentVideoResult is not null
+                    && DataContext is MainWindowViewModel vm)
+                {
+                    vm.Recent.UpdatePositionInMemory(_currentVideoResult, e.Time, length);
+                }
             }
             else
             {
                 PositionSlider.IsEnabled = false;
+                if (PipPositionSlider is not null) PipPositionSlider.IsEnabled = false;
             }
         });
     }
@@ -301,13 +381,19 @@ public partial class MainWindow : Window
             if (e.Length > 0)
             {
                 // Remaining-time display: at load, remaining = total length.
-                DurationLabel.Text = FormatTime(TimeSpan.FromMilliseconds(e.Length));
+                var total = FormatTime(TimeSpan.FromMilliseconds(e.Length));
+                DurationLabel.Text = total;
+                if (PipDurationLabel is not null) PipDurationLabel.Text = total;
                 PositionSlider.IsEnabled = _player.IsSeekable;
+                if (PipPositionSlider is not null)
+                    PipPositionSlider.IsEnabled = _player.IsSeekable;
             }
             else
             {
                 DurationLabel.Text = "—";
+                if (PipDurationLabel is not null) PipDurationLabel.Text = "—";
                 PositionSlider.IsEnabled = false;
+                if (PipPositionSlider is not null) PipPositionSlider.IsEnabled = false;
             }
         });
     }
@@ -316,22 +402,46 @@ public partial class MainWindow : Window
     {
         _isSliderUpdatingFromPlayer = true;
         PositionSlider.Value = value;
+        if (PipPositionSlider is not null) PipPositionSlider.Value = value;
         _isSliderUpdatingFromPlayer = false;
     }
 
     private void OnPositionSliderChanged(object? sender, RangeBaseValueChangedEventArgs e)
     {
         if (_isSliderUpdatingFromPlayer) return;
-        if (_player.Length <= 0 || !_player.IsSeekable) return;
 
         var fraction = e.NewValue / 1000.0;
+
+        // After end-of-stream the player is in Ended / Stopped state and
+        // setting Position alone won't resume — we have to re-Play the
+        // media. The Playing event handler picks up _pendingSeekMs and
+        // applies the seek there, which means even during the buffering
+        // gap the user's latest slider drag wins.
+        if (_player.State == VLCState.Ended || _player.State == VLCState.Stopped)
+        {
+            if (_currentMedia is null) return;
+            if (_player.Length > 0)
+                _pendingSeekMs = (long)(fraction * _player.Length);
+            _player.Play(_currentMedia);
+            return;
+        }
+
+        if (_player.Length <= 0 || !_player.IsSeekable) return;
+
         _player.Position = (float)fraction;
 
         // TimeChanged only fires during active playback, so when seeking
-        // while paused we update the remaining-time label ourselves.
+        // while paused we update the remaining-time label and the Recent
+        // entry's progress ourselves.
         var newTimeMs = (long)(fraction * _player.Length);
-        DurationLabel.Text = FormatTime(
+        var remaining = FormatTime(
             TimeSpan.FromMilliseconds(Math.Max(0, _player.Length - newTimeMs)));
+        DurationLabel.Text = remaining;
+        if (PipDurationLabel is not null) PipDurationLabel.Text = remaining;
+        if (_currentVideoResult is not null && DataContext is MainWindowViewModel vm)
+        {
+            vm.Recent.UpdatePositionInMemory(_currentVideoResult, newTimeMs, _player.Length);
+        }
     }
 
     private static string FormatTime(TimeSpan t) =>
@@ -352,21 +462,35 @@ public partial class MainWindow : Window
             void RefreshRecentEmpty() =>
                 RecentEmptyLabel.IsVisible = vm.Recent.Items.Count == 0;
             RefreshRecentEmpty();
-            vm.Recent.Items.CollectionChanged += (_, _) => RefreshRecentEmpty();
+            vm.Recent.Items.CollectionChanged += (_, _) =>
+            {
+                RefreshRecentEmpty();
+                // Re-apply the "currently playing" highlight: SaveCurrentPosition
+                // (called on pause / seek) re-inserts the card at the top,
+                // which destroys and recreates its visual container — so the
+                // highlight on the new container needs to be set fresh.
+                RefreshRecentPlayingHighlight();
+            };
+
+            // Same pattern for the search results panel — show the empty
+            // hint while the user hasn't searched / no results came back.
+            void RefreshSearchEmpty() =>
+                SearchResultsEmptyLabel.IsVisible = vm.Results.Count == 0;
+            RefreshSearchEmpty();
+            vm.Results.CollectionChanged += (_, _) => RefreshSearchEmpty();
 
             switch (vm.Sources.Theme)
             {
-                case "Light": LightThemeRadio.IsChecked = true; break;
-                case "Dark": DarkThemeRadio.IsChecked = true; break;
                 case "Dracula": DraculaThemeRadio.IsChecked = true; break;
                 case "Netflix": NetflixThemeRadio.IsChecked = true; break;
                 case "PrimeVideo": PrimeVideoThemeRadio.IsChecked = true; break;
                 case "DisneyPlus": DisneyPlusThemeRadio.IsChecked = true; break;
                 case "Catppuccin": CatppuccinThemeRadio.IsChecked = true; break;
-                case "LightLavender": LightLavenderThemeRadio.IsChecked = true; break;
                 case "LightMint": LightMintThemeRadio.IsChecked = true; break;
                 case "LightApricot": LightApricotThemeRadio.IsChecked = true; break;
-                default: SystemThemeRadio.IsChecked = true; break;
+                // Includes "LightLavender" and any legacy / unrecognized
+                // value (System / Light / Dark from previous saves).
+                default: LightLavenderThemeRadio.IsChecked = true; break;
             }
         }
     }
@@ -378,18 +502,57 @@ public partial class MainWindow : Window
             // Save the movie we're leaving before overwriting _currentVideoResult.
             SaveCurrentPosition();
 
+            // Clear the previous movie's last frame so the loading window
+            // (full-size and PiP) shows a clean black surface instead of
+            // the old video. The new bitmap is assigned by VLC's
+            // VideoFormat callback once the new media starts decoding.
+            VideoImage.Source = null;
+            if (PipImage is not null) PipImage.Source = null;
+
             _currentVideoResult = source;
             _pendingSeekMs = startPosMs;
-            if (RecentOverlay is not null) RecentOverlay.IsVisible = false;
+            // Real playback has begun — drop the optimistic-highlight URL
+            // so subsequent updates flow through _currentVideoResult.
+            _pendingPlayingPageUrl = null;
+            // Insert into Recently watched the moment playback starts so
+            // the card shows up right away (instead of only after pause /
+            // close, which is when SaveCurrentPosition runs). The entry
+            // floats to the top and gets a real position/length on the
+            // next save.
+            if (DataContext is MainWindowViewModel vmAdd)
+                vmAdd.Recent.UpsertAndSave(source, Math.Max(0, startPosMs), 0);
+
+            // Highlight the now-playing card in the Recently watched panel
+            // (deferred to next tick so the freshly-upserted item has had
+            // a layout pass to materialise its visual).
+            RefreshRecentPlayingHighlight();
+            // Capture which view the user was on so Back_Click can return
+            // there — playback from the Recently watched tab should *stay*
+            // in that tab, not jump to Search.
+            _originView = RecentlyWatchedPanel.IsVisible
+                ? AppView.RecentlyWatched
+                : SettingsPanel.IsVisible ? AppView.Settings : AppView.Search;
+            _activeTab = _originView;
+            // Starting fresh playback — make sure any previous PiP overlay
+            // is closed so the video shows full size.
+            ExitPipMode();
+            // Mount the full-width video stage. Search bar + results panel
+            // are hidden during playback regardless of origin tab.
+            ShowPlaybackView(_originView);
             if (BackButton is not null) BackButton.IsVisible = true;
+            if (PipButton is not null) PipButton.IsVisible = true;
             if (TopGradient is not null) TopGradient.IsVisible = true;
             if (BottomGradient is not null) BottomGradient.IsVisible = true;
             if (TransportBarContainer is not null) TransportBarContainer.IsVisible = true;
             if (VideoImage is not null) VideoImage.IsVisible = true;
-            // Round the video surface while a movie is playing. Left at 0
-            // while the overlay is visible to avoid corner artifacts
-            // between ScrollViewer content and the clip.
+            // Show the loading overlay until the player's Playing event hides it.
+            // Both the full-size and PiP spinners track the same flag so the
+            // user sees a spinner regardless of which mode they're in.
+            SetLoadingState(true);
+            // Round the video surface while a movie is playing; black
+            // background so letterbox bars render correctly.
             VideoBorder.CornerRadius = new CornerRadius(4);
+            VideoBorder.Background = Avalonia.Media.Brushes.Black;
             if (CurrentMovieTitle is not null)
             {
                 CurrentMovieTitle.Text = source.Title;
@@ -432,8 +595,18 @@ public partial class MainWindow : Window
         // could resume VLC's internally-cached last media on some
         // backends.
         if (_currentMedia is null) return;
-        if (_player.State == VLCState.Playing) _player.Pause();
-        else _player.Play();
+        if (_player.State == VLCState.Playing) { _player.Pause(); return; }
+        // After end-of-stream the no-arg Play() can resume from VLC's
+        // internal cached position (which produced the "random X minutes
+        // remaining" behaviour). Restart explicitly with the current
+        // media and a zeroed pending seek so we always replay from zero.
+        if (_player.State == VLCState.Ended || _player.State == VLCState.Stopped)
+        {
+            _pendingSeekMs = 0;
+            _player.Play(_currentMedia);
+            return;
+        }
+        _player.Play();
     }
 
     private void Back10_Click(object? sender, RoutedEventArgs e) =>
@@ -444,7 +617,7 @@ public partial class MainWindow : Window
 
     private void OnVideoTapped(object? sender, TappedEventArgs e)
     {
-        if (RecentOverlay.IsVisible) return;
+        if (_currentVideoResult is null) return;
         if (IsInsideTransportBar(e.Source)) return;
         _singleTapTimer.Stop();
         _singleTapTimer.Start();
@@ -452,7 +625,7 @@ public partial class MainWindow : Window
 
     private void OnVideoDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (RecentOverlay.IsVisible) return;
+        if (_currentVideoResult is null) return;
         if (IsInsideTransportBar(e.Source)) return;
         _singleTapTimer.Stop();
         ToggleFullscreen();
@@ -474,6 +647,7 @@ public partial class MainWindow : Window
         {
             if (cur == TransportBarContainer) return true;
             if (cur == BackButton) return true;
+            if (cur == PipButton) return true;
             cur = cur.GetVisualParent();
         }
         return false;
@@ -575,6 +749,18 @@ public partial class MainWindow : Window
             BeginMoveDrag(e);
     }
 
+    // Title-bar theme button → centered modal overlay (instead of an
+    // anchored Flyout). Backdrop click closes; clicks on the card are
+    // suppressed via Handled so they don't bubble to the backdrop.
+    private void ThemeBtn_Click(object? sender, RoutedEventArgs e)
+        => ThemePickerOverlay.IsVisible = true;
+
+    private void ThemePickerOverlay_BackdropClicked(object? sender, PointerPressedEventArgs e)
+        => ThemePickerOverlay.IsVisible = false;
+
+    private void ThemePickerCard_Pressed(object? sender, PointerPressedEventArgs e)
+        => e.Handled = true;
+
     private void Minimize_Click(object? sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;
@@ -591,15 +777,6 @@ public partial class MainWindow : Window
     {
         Close();
     }
-
-    private void SystemTheme_Checked(object? sender, RoutedEventArgs e)
-        => SelectTheme(sender, "System");
-
-    private void LightTheme_Checked(object? sender, RoutedEventArgs e)
-        => SelectTheme(sender, "Light");
-
-    private void DarkTheme_Checked(object? sender, RoutedEventArgs e)
-        => SelectTheme(sender, "Dark");
 
     private void DraculaTheme_Checked(object? sender, RoutedEventArgs e)
         => SelectTheme(sender, "Dracula");
@@ -625,14 +802,89 @@ public partial class MainWindow : Window
     private void LightApricotTheme_Checked(object? sender, RoutedEventArgs e)
         => SelectTheme(sender, "LightApricot");
 
+    private bool _syncingThemePills;
+
     private void SelectTheme(object? sender, string theme)
     {
-        if (sender is RadioButton { IsChecked: true })
+        if (sender is not RadioButton { IsChecked: true }) return;
+        // Re-entry guard: SyncThemePills sets IsChecked on the matching
+        // pill in the *other* group, which re-fires this handler. The
+        // theme is already applied — short-circuit.
+        if (_syncingThemePills) return;
+
+        App.ApplyTheme(theme);
+        if (DataContext is ViewModels.MainWindowViewModel vm)
+            vm.Sources.Theme = theme;
+        SyncThemePills(theme);
+        // Dismiss the title-bar theme picker after a selection — instant
+        // visual feedback that the theme has been applied.
+        if (ThemePickerOverlay is not null) ThemePickerOverlay.IsVisible = false;
+    }
+
+    // Two pill groups exist for the same set of themes (title-bar palette
+    // flyout + Settings panel). Whichever the user clicks, both sets must
+    // reflect the new selection: we set IsChecked on every matching pill
+    // and paint accent/accent-soft imperatively (DynamicResource inside
+    // Flyout content lags behind merged-dictionary swaps; setting the
+    // brushes directly with the just-applied resources avoids that).
+    private void SyncThemePills(string theme)
+    {
+        var accent = ResolveBrush("SystemAccentColorBrush", this);
+        var accentSoft = ResolveBrush("AccentSoftBrush", this);
+
+        _syncingThemePills = true;
+        try
         {
-            App.ApplyTheme(theme);
-            if (DataContext is ViewModels.MainWindowViewModel vm)
-                vm.Sources.Theme = theme;
+            foreach (var (pill, t) in AllThemePills())
+            {
+                if (t == theme)
+                {
+                    if (pill.IsChecked != true) pill.IsChecked = true;
+                    if (accent is not null) pill.BorderBrush = accent;
+                    if (accentSoft is not null) pill.Background = accentSoft;
+                }
+                else
+                {
+                    if (pill.IsChecked == true) pill.IsChecked = false;
+                    pill.ClearValue(Avalonia.Controls.Primitives.TemplatedControl.BorderBrushProperty);
+                    pill.ClearValue(Avalonia.Controls.Primitives.TemplatedControl.BackgroundProperty);
+                }
+            }
         }
+        finally { _syncingThemePills = false; }
+    }
+
+    private IEnumerable<(RadioButton pill, string theme)> AllThemePills()
+    {
+        // Title-bar palette flyout group.
+        yield return (LightApricotThemeRadio,    "LightApricot");
+        yield return (CatppuccinThemeRadio,      "Catppuccin");
+        yield return (DisneyPlusThemeRadio,      "DisneyPlus");
+        yield return (DraculaThemeRadio,         "Dracula");
+        yield return (LightLavenderThemeRadio,   "LightLavender");
+        yield return (LightMintThemeRadio,       "LightMint");
+        yield return (NetflixThemeRadio,         "Netflix");
+        yield return (PrimeVideoThemeRadio,      "PrimeVideo");
+        // Settings panel group.
+        yield return (SettingsLightApricotRadio, "LightApricot");
+        yield return (SettingsCatppuccinRadio,   "Catppuccin");
+        yield return (SettingsDisneyPlusRadio,   "DisneyPlus");
+        yield return (SettingsDraculaRadio,      "Dracula");
+        yield return (SettingsLightLavenderRadio,"LightLavender");
+        yield return (SettingsLightMintRadio,    "LightMint");
+        yield return (SettingsNetflixRadio,      "Netflix");
+        yield return (SettingsPrimeVideoRadio,   "PrimeVideo");
+    }
+
+    private static Avalonia.Media.IBrush? ResolveBrush(string key, Control origin)
+    {
+        if (origin.TryFindResource(key, origin.ActualThemeVariant, out var v)
+            && v is Avalonia.Media.IBrush b)
+            return b;
+        if (Application.Current?.TryFindResource(key, origin.ActualThemeVariant, out var v2) == true
+            && v2 is Avalonia.Media.IBrush b2)
+            return b2;
+        return null;
     }
 
     private void PlayResult_Click(object? sender, RoutedEventArgs e)
@@ -653,56 +905,572 @@ public partial class MainWindow : Window
         if (sender is Button { Tag: RecentWatch rw }
             && DataContext is MainWindowViewModel vm)
         {
+            // If the user clicked the card for the movie that's already
+            // playing (in PiP mode while they're browsing Recently watched),
+            // don't restart it — just bring the video back to full size.
+            if (_isPipMode
+                && _currentVideoResult is not null
+                && !string.IsNullOrEmpty(rw.PageUrl)
+                && _currentVideoResult.PageUrl == rw.PageUrl)
+            {
+                PipRestore_Click(sender, e);
+                return;
+            }
+            // Optimistic highlight: light up the clicked card with
+            // "Currently playing" right away while the stream URL is
+            // being extracted in the background.
+            _pendingPlayingPageUrl = string.IsNullOrEmpty(rw.PageUrl) ? null : rw.PageUrl;
+            ApplyRecentPlayingHighlightNow();
             _ = vm.PlayRecentAsync(rw);
         }
     }
 
-    // ── Sidebar nav rail handlers ─────────────────────────────────────
-    // Search: bring focus to the search field (acts like the "home" view).
+    // ── Sidebar nav handlers ──────────────────────────────────────────
+    // Three views share the main area: Search (default — search row +
+    // results panel + video stage), Recently watched (just the video
+    // stage with the recently-watched overlay), and Settings (embedded
+    // settings panel replaces the content grid). Helpers below toggle
+    // visibility.
+
     private void NavSearch_Click(object? sender, RoutedEventArgs e)
     {
-        TitleBox?.Focus();
-        TitleBox?.SelectAll();
+        _activeTab = AppView.Search;
+        UpdateActiveNavTab();
+        if (_currentVideoResult is not null) EnterPipMode();
+        ShowSearchView();
+        ResetStatusForActiveTab();
     }
 
-    // Recently watched: same as the back arrow — tear down current
-    // playback (if any) and show the overlay.
     private void NavRecent_Click(object? sender, RoutedEventArgs e)
     {
-        if (_currentVideoResult is not null)
-            Back_Click(sender, e);
+        _activeTab = AppView.RecentlyWatched;
+        UpdateActiveNavTab();
+        if (_currentVideoResult is not null) EnterPipMode();
+        ShowRecentlyWatchedView();
+        ResetStatusForActiveTab();
     }
 
-    // Settings: open the existing search-bar Sources flyout (no need to
-    // duplicate its content — just delegate).
     private void NavSettings_Click(object? sender, RoutedEventArgs e)
     {
-        if (SettingsBtn.Flyout is { } flyout)
-            flyout.ShowAt(SettingsBtn);
+        _activeTab = AppView.Settings;
+        UpdateActiveNavTab();
+        if (_currentVideoResult is not null) EnterPipMode();
+        ShowSettingsView();
+        ResetStatusForActiveTab();
+    }
+
+    // Picks the right per-tab default for the bottom status bar. On the
+    // Search tab it surfaces the last search summary if there were
+    // results; otherwise the prompt to enter a title.
+    private void ResetStatusForActiveTab()
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        vm.Status = _activeTab switch
+        {
+            AppView.RecentlyWatched => "Click a movie to resume watching.",
+            AppView.Settings => "Settings save automatically.",
+            _ => vm.Results.Count > 0 && !string.IsNullOrEmpty(vm.LastSearchTitle)
+                ? $"Found {vm.Results.Count} search results for '{vm.LastSearchTitle}'."
+                : "Enter a title and click Search.",
+        };
+    }
+
+    // Toggles the .active CSS-style class on the three sidebar nav
+    // buttons so the icon stroke flips to the accent color on the
+    // currently-active tab — visual cue for "where am I".
+    private void UpdateActiveNavTab()
+    {
+        SetActive(NavSearchBtn, _activeTab == AppView.Search);
+        SetActive(NavRecentBtn, _activeTab == AppView.RecentlyWatched);
+        SetActive(SettingsBtn, _activeTab == AppView.Settings);
+    }
+
+    private static void SetActive(Control c, bool active)
+    {
+        if (active)
+        {
+            if (!c.Classes.Contains("active")) c.Classes.Add("active");
+        }
+        else
+        {
+            c.Classes.Remove("active");
+        }
+    }
+
+    private void ShowSearchView()
+    {
+        // Search tab without active playback: search bar at the top,
+        // ResultsPanel takes the full content width. The video stage
+        // (Column 1) is collapsed entirely — it only ever appears
+        // during full-screen playback (ShowPlaybackView).
+        SearchBar.IsVisible = true;
+        ContentGrid.IsVisible = true;
+        ContentGrid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+        ContentGrid.ColumnDefinitions[1].Width = new GridLength(0);
+        ResultsPanel.IsVisible = true;
+        RecentlyWatchedPanel.IsVisible = false;
+        SettingsPanel.IsVisible = false;
+    }
+
+    private void ShowRecentlyWatchedView()
+    {
+        // Hide everything else; the recently-watched card panel takes
+        // over the main content area entirely.
+        SearchBar.IsVisible = false;
+        ContentGrid.IsVisible = false;
+        RecentlyWatchedPanel.IsVisible = true;
+        SettingsPanel.IsVisible = false;
+        // Re-apply playing highlight in case cards just materialised.
+        RefreshRecentPlayingHighlight();
+    }
+
+    private void ShowSettingsView()
+    {
+        // Replace the entire content grid (search + results + video)
+        // with the embedded Settings panel.
+        SearchBar.IsVisible = false;
+        ContentGrid.IsVisible = false;
+        RecentlyWatchedPanel.IsVisible = false;
+        SettingsPanel.IsVisible = true;
+    }
+
+    // Layout for the video stage during playback. Always full-width video
+    // (search bar + results panel hidden), regardless of which tab the
+    // user came from — playback feels uniform across tabs.
+    private void ShowPlaybackView(AppView origin)
+    {
+        _ = origin;
+        ContentGrid.IsVisible = true;
+        RecentlyWatchedPanel.IsVisible = false;
+        SettingsPanel.IsVisible = false;
+        SearchBar.IsVisible = false;
+        ContentGrid.ColumnDefinitions[0].Width = new GridLength(0);
+        ContentGrid.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+        ResultsPanel.IsVisible = false;
+    }
+
+    // ── Picture-in-picture ────────────────────────────────────────────
+    // While a video is playing and the user navigates to a tab without
+    // a video stage (or to a different layout), the video shrinks into
+    // PipFrame — a draggable mini-player anchored bottom-right by default.
+    // The full-size video chrome (gradients, back arrow, title, transport
+    // bar) is hidden during PiP; the mini-transport inside PipFrame mirrors
+    // the player state via SetPlayPauseIcons / SetSliderFromPlayer.
+
+    private void EnterPipMode()
+    {
+        if (_isPipMode || _currentVideoResult is null) return;
+        _isPipMode = true;
+
+        // Hide the full-size video chrome — only the PiP frame is visible.
+        TopGradient.IsVisible = false;
+        BottomGradient.IsVisible = false;
+        BackButton.IsVisible = false;
+        PipButton.IsVisible = false;
+        CurrentMovieTitle.IsVisible = false;
+        TransportBarContainer.IsVisible = false;
+        // VideoBorder is inside ContentGrid. ContentGrid is hidden by the
+        // active view (Recently watched / Settings), so the underlying
+        // video stage doesn't show through.
+
+        // Always start PiP at the default minimum size — don't carry the
+        // previous session's resize across opens.
+        PipFrame.Width = PipWidth;
+        PipFrame.Height = PipHeight;
+
+        // Position bottom-right with edge padding. Defer to next layout
+        // pass if PipHost hasn't been measured yet.
+        PipFrame.IsVisible = true;
+        PositionPipBottomRight();
+
+        PulsePipUi();
+    }
+
+    private void ExitPipMode()
+    {
+        if (!_isPipMode) return;
+        _isPipMode = false;
+        PipFrame.IsVisible = false;
+        PipRestoreBtn.IsVisible = false;
+        PipCloseBtn.IsVisible = false;
+        PipTransport.IsVisible = false;
+        PipTopGradient.IsVisible = false;
+        PipBottomGradient.IsVisible = false;
+        SetPipResizeGripsVisible(false);
+        _pipHideUiTimer?.Stop();
+
+        // Bring the full-size chrome back if a video is still loaded.
+        if (_currentVideoResult is not null)
+        {
+            TopGradient.IsVisible = true;
+            BottomGradient.IsVisible = true;
+            BackButton.IsVisible = true;
+            PipButton.IsVisible = true;
+            CurrentMovieTitle.IsVisible = true;
+            TransportBarContainer.IsVisible = true;
+        }
+    }
+
+    private void PositionPipBottomRight()
+    {
+        var hostW = PipHost.Bounds.Width;
+        var hostH = PipHost.Bounds.Height;
+        if (hostW <= 0 || hostH <= 0)
+        {
+            // Layout pass hasn't happened yet — try again after layout.
+            Dispatcher.UIThread.Post(PositionPipBottomRight, DispatcherPriority.Loaded);
+            return;
+        }
+        var left = Math.Max(PipPaddingFromEdges, hostW - PipWidth - PipPaddingFromEdges);
+        var top = Math.Max(PipPaddingFromEdges, hostH - PipHeight - PipPaddingFromEdges);
+        PipFrame.Margin = new Thickness(left, top, 0, 0);
+    }
+
+    // PiP toggle button on the full-size video chrome (top-right). Drops
+    // the video into the floating mini-player and shows whichever tab is
+    // currently active behind it.
+    private void EnterPip_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_currentVideoResult is null) return;
+        EnterPipMode();
+        switch (_activeTab)
+        {
+            case AppView.RecentlyWatched: ShowRecentlyWatchedView(); break;
+            case AppView.Settings: ShowSettingsView(); break;
+            default: ShowSearchView(); break;
+        }
+    }
+
+    private void PipRestore_Click(object? sender, RoutedEventArgs e)
+    {
+        // Pick the layout to restore into. Settings has no video place, so
+        // fall back to where the video originally started; otherwise the
+        // currently-active tab wins (Search or Recently watched).
+        var target = _activeTab == AppView.Settings ? _originView : _activeTab;
+        if (target == AppView.Settings) target = AppView.Search;
+        ExitPipMode();
+        ShowPlaybackView(target);
+    }
+
+    private void PipPlayPause_Click(object? sender, RoutedEventArgs e)
+        => PlayPause_Click(sender, e);
+
+    // Tear down playback entirely from the PiP — same effect as the
+    // full-size BackButton, but anchored to the user's *current* tab,
+    // not wherever the video originally started. Without this, closing
+    // PiP from Recently watched while the video had started in Search
+    // would briefly switch the layout back to Search → visible flicker.
+    private void PipClose_Click(object? sender, RoutedEventArgs e)
+    {
+        // Stay on the tab the user is currently viewing.
+        _originView = _activeTab;
+        ExitPipMode();
+        Dispatcher.UIThread.Post(() => Back_Click(sender, e));
+    }
+
+
+    // ── PiP drag handling ────────────────────────────────────────────
+    // PointerPressed on empty PiP space starts a drag (clicks on the
+    // restore button / play / pause / slider must NOT start a drag, so
+    // we walk the source's ancestors and bail on any interactive child).
+
+    private void PipFrame_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Visual v && IsInsidePipControl(v)) return;
+        if (!e.GetCurrentPoint(PipFrame).Properties.IsLeftButtonPressed) return;
+        _pipDragging = true;
+        _pipDragStart = e.GetPosition(PipHost);
+        _pipMarginAtDragStart = PipFrame.Margin;
+        e.Pointer.Capture(PipFrame);
+    }
+
+    private void PipFrame_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        PulsePipUi();
+        if (!_pipDragging) return;
+
+        var current = e.GetPosition(PipHost);
+        var dx = current.X - _pipDragStart.X;
+        var dy = current.Y - _pipDragStart.Y;
+
+        var hostW = PipHost.Bounds.Width;
+        var hostH = PipHost.Bounds.Height;
+        var maxLeft = Math.Max(PipPaddingFromEdges,
+            hostW - PipFrame.Bounds.Width - PipPaddingFromEdges);
+        var maxTop = Math.Max(PipPaddingFromEdges,
+            hostH - PipFrame.Bounds.Height - PipPaddingFromEdges);
+
+        var newLeft = Math.Clamp(_pipMarginAtDragStart.Left + dx, PipPaddingFromEdges, maxLeft);
+        var newTop = Math.Clamp(_pipMarginAtDragStart.Top + dy, PipPaddingFromEdges, maxTop);
+        PipFrame.Margin = new Thickness(newLeft, newTop, 0, 0);
+    }
+
+    private void PipFrame_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_pipDragging) return;
+        _pipDragging = false;
+        e.Pointer.Capture(null);
+    }
+
+    // ── PiP resize ───────────────────────────────────────────────────
+    // Four grips (one per corner) share these handlers. Each grip's Tag
+    // ("TL"/"TR"/"BL"/"BR") identifies which corner the user grabbed; the
+    // OPPOSITE corner stays anchored, so the frame grows / shrinks toward
+    // the dragged edge. 16:9 aspect ratio is preserved; min size is the
+    // default 320×180; max is whatever fits inside PipHost from the
+    // anchored edge minus the standard edge padding.
+    private void PipResizeGrip_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border grip) return;
+        if (!e.GetCurrentPoint(grip).Properties.IsLeftButtonPressed) return;
+        _pipResizing = true;
+        _pipResizeStart = e.GetPosition(PipHost);
+        _pipSizeAtResizeStart = new Size(PipFrame.Bounds.Width, PipFrame.Bounds.Height);
+        _pipMarginAtResizeStart = PipFrame.Margin;
+        _pipResizeCorner = (grip.Tag as string) ?? "BR";
+        e.Pointer.Capture(grip);
+        e.Handled = true;
+    }
+
+    private void PipResizeGrip_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_pipResizing) return;
+        var current = e.GetPosition(PipHost);
+        var dx = current.X - _pipResizeStart.X;
+        var dy = current.Y - _pipResizeStart.Y;
+
+        // Right-side grips grow with +dx; left-side grips grow with -dx.
+        // Bottom-side grips grow with +dy; top-side grips grow with -dy.
+        var xSign = _pipResizeCorner.Contains('R') ? 1 : -1;
+        var ySign = _pipResizeCorner.Contains('B') ? 1 : -1;
+
+        // Drive resize off whichever axis moved more (translated to width
+        // through the 16:9 aspect) so diagonal drags feel natural while
+        // the frame stays at the right ratio.
+        var widthFromDx = _pipSizeAtResizeStart.Width + dx * xSign;
+        var widthFromDy = (_pipSizeAtResizeStart.Height + dy * ySign) * PipAspect;
+        var newWidth = Math.Max(widthFromDx, widthFromDy);
+
+        // Max bounds depend on which edge stays fixed. Right-side grip ⇒
+        // left edge is anchored, so the frame can grow to the right edge
+        // of PipHost. Left-side grip ⇒ right edge is anchored, so the
+        // frame can grow to the left edge of PipHost (= 0 + padding).
+        double maxWidth, maxHeight;
+        if (xSign == 1)
+        {
+            maxWidth = Math.Max(PipWidth,
+                PipHost.Bounds.Width - _pipMarginAtResizeStart.Left - PipPaddingFromEdges);
+        }
+        else
+        {
+            var rightEdge = _pipMarginAtResizeStart.Left + _pipSizeAtResizeStart.Width;
+            maxWidth = Math.Max(PipWidth, rightEdge - PipPaddingFromEdges);
+        }
+        if (ySign == 1)
+        {
+            maxHeight = Math.Max(PipHeight,
+                PipHost.Bounds.Height - _pipMarginAtResizeStart.Top - PipPaddingFromEdges);
+        }
+        else
+        {
+            var bottomEdge = _pipMarginAtResizeStart.Top + _pipSizeAtResizeStart.Height;
+            maxHeight = Math.Max(PipHeight, bottomEdge - PipPaddingFromEdges);
+        }
+
+        newWidth = Math.Clamp(newWidth, PipWidth, maxWidth);
+        var newHeight = newWidth / PipAspect;
+        if (newHeight > maxHeight)
+        {
+            newHeight = maxHeight;
+            newWidth = newHeight * PipAspect;
+        }
+
+        // Anchor the opposite corner: Margin.Left/Top only changes for
+        // grips whose corner is on that side.
+        var newLeft = _pipMarginAtResizeStart.Left;
+        var newTop = _pipMarginAtResizeStart.Top;
+        if (xSign == -1)
+        {
+            var rightEdge = _pipMarginAtResizeStart.Left + _pipSizeAtResizeStart.Width;
+            newLeft = rightEdge - newWidth;
+        }
+        if (ySign == -1)
+        {
+            var bottomEdge = _pipMarginAtResizeStart.Top + _pipSizeAtResizeStart.Height;
+            newTop = bottomEdge - newHeight;
+        }
+
+        PipFrame.Width = newWidth;
+        PipFrame.Height = newHeight;
+        PipFrame.Margin = new Thickness(newLeft, newTop, 0, 0);
+        PulsePipUi();
+        e.Handled = true;
+    }
+
+    private void PipResizeGrip_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_pipResizing) return;
+        _pipResizing = false;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    private void PipFrame_PointerEntered(object? sender, PointerEventArgs e)
+        => PulsePipUi();
+
+    private void PipFrame_PointerExited(object? sender, PointerEventArgs e)
+    {
+        // Don't hide chrome mid-drag — the grip would disappear under the
+        // cursor and the resize would silently end.
+        if (_pipResizing) return;
+        // Hide controls immediately when the pointer leaves so the PiP
+        // frame goes back to a clean video-only look without waiting for
+        // the 3-second timeout.
+        _pipHideUiTimer?.Stop();
+        PipRestoreBtn.IsVisible = false;
+        PipCloseBtn.IsVisible = false;
+        PipTransport.IsVisible = false;
+        PipTopGradient.IsVisible = false;
+        PipBottomGradient.IsVisible = false;
+        SetPipResizeGripsVisible(false);
+    }
+
+    private bool IsInsidePipControl(Visual origin)
+    {
+        Visual? cur = origin;
+        while (cur is not null && cur != PipFrame)
+        {
+            if (cur is Button || cur is Slider) return true;
+            if (cur == PipResizeGripTL || cur == PipResizeGripTR
+                || cur == PipResizeGripBL || cur == PipResizeGripBR) return true;
+            cur = cur.GetVisualParent();
+        }
+        return false;
+    }
+
+    private void SetPipResizeGripsVisible(bool visible)
+    {
+        PipResizeGripTL.IsVisible = visible;
+        PipResizeGripTR.IsVisible = visible;
+        PipResizeGripBL.IsVisible = visible;
+        PipResizeGripBR.IsVisible = visible;
+    }
+
+    // Drives both loading spinners (full-size + PiP) from a single call.
+    // Showing both, regardless of whether the user is currently in PiP,
+    // means dropping into the mini player while the stream is still
+    // buffering still surfaces a spinner over the black PipImage.
+    private void SetLoadingState(bool loading)
+    {
+        if (LoadingOverlay is not null) LoadingOverlay.IsVisible = loading;
+        if (PipLoadingOverlay is not null) PipLoadingOverlay.IsVisible = loading;
+    }
+
+    // Auto-hide UI: show the restore button + mini transport while there's
+    // pointer activity, hide them ~3s after the pointer goes idle.
+    private void PulsePipUi()
+    {
+        if (!_isPipMode) return;
+        PipRestoreBtn.IsVisible = true;
+        PipCloseBtn.IsVisible = true;
+        PipTransport.IsVisible = true;
+        PipTopGradient.IsVisible = true;
+        PipBottomGradient.IsVisible = true;
+        SetPipResizeGripsVisible(true);
+        _pipHideUiTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _pipHideUiTimer.Tick -= OnPipHideUiTick;
+        _pipHideUiTimer.Tick += OnPipHideUiTick;
+        _pipHideUiTimer.Stop();
+        _pipHideUiTimer.Start();
+    }
+
+    private void OnPipHideUiTick(object? sender, EventArgs e)
+    {
+        _pipHideUiTimer?.Stop();
+        if (!_isPipMode) return;
+        PipRestoreBtn.IsVisible = false;
+        PipCloseBtn.IsVisible = false;
+        PipTransport.IsVisible = false;
+        PipTopGradient.IsVisible = false;
+        PipBottomGradient.IsVisible = false;
+        SetPipResizeGripsVisible(false);
     }
 
     private void RecentCard_PointerEntered(object? sender, PointerEventArgs e)
     {
         if (sender is not Button btn) return;
-        if (FindBorderByClass(btn, "poster") is Border poster)
-            poster.BorderBrush = ResolveAccentBrush(btn);
-        if (FindBorderByClass(btn, "resume") is Border resume)
-            resume.IsVisible = true;
+        ApplyRecentCardVisuals(btn, hovered: true);
     }
 
     private void RecentCard_PointerExited(object? sender, PointerEventArgs e)
     {
         if (sender is not Button btn) return;
-        if (FindBorderByClass(btn, "poster") is Border poster)
-            poster.BorderBrush = Avalonia.Media.Brushes.Transparent;
-        if (FindBorderByClass(btn, "resume") is Border resume)
-            resume.IsVisible = false;
+        // Don't strip the highlight on the playing card — its hover state
+        // is "always on" so users can spot it at a glance without hovering.
+        ApplyRecentCardVisuals(btn, hovered: false);
     }
+
+    // Shared visual update for a recent card. The "currently-playing"
+    // card stays in the hover state regardless of pointer position;
+    // other cards follow normal hover-on / hover-off rules.
+    private void ApplyRecentCardVisuals(Button card, bool hovered)
+    {
+        var isPlaying = IsRecentCardPlaying(card);
+        var show = hovered || isPlaying;
+
+        if (FindBorderByClass(card, "poster") is Border poster)
+            poster.BorderBrush = show
+                ? ResolveAccentBrush(card)
+                : Avalonia.Media.Brushes.Transparent;
+
+        if (FindBorderByClass(card, "resume") is Border resume)
+        {
+            resume.IsVisible = show;
+            if (FindFirstTextBlock(resume) is TextBlock label)
+                label.Text = isPlaying ? "Currently playing" : "Resume";
+        }
+    }
+
+    private bool IsRecentCardPlaying(Button card)
+    {
+        if (card.Tag is not RecentWatch rw || string.IsNullOrEmpty(rw.PageUrl))
+            return false;
+        // Pending click takes precedence so a freshly-tapped card lights
+        // up immediately, even before the player has actually started.
+        var activeUrl = _pendingPlayingPageUrl ?? _currentVideoResult?.PageUrl;
+        return activeUrl is not null && rw.PageUrl == activeUrl;
+    }
+
+    // Sweeps every materialised recent-card and re-applies its visual state
+    // synchronously. Use this when the cards are already in the visual tree
+    // (e.g. tearing down the highlight on close).
+    private void ApplyRecentPlayingHighlightNow()
+    {
+        if (RecentlyWatchedPanel is null) return;
+        foreach (var d in RecentlyWatchedPanel.GetVisualDescendants())
+        {
+            if (d is Button btn && btn.Classes.Contains("recent-card"))
+                ApplyRecentCardVisuals(btn, hovered: false);
+        }
+    }
+
+    // Deferred wrapper — needed when the call follows a CollectionChanged
+    // (a new container needs a layout pass to materialise before we can
+    // find it in the visual tree).
+    private void RefreshRecentPlayingHighlight()
+        => Dispatcher.UIThread.Post(ApplyRecentPlayingHighlightNow);
 
     private static Border? FindBorderByClass(Control root, string className)
     {
         foreach (var d in root.GetVisualDescendants())
             if (d is Border b && b.Classes.Contains(className)) return b;
+        return null;
+    }
+
+    private static TextBlock? FindFirstTextBlock(Visual root)
+    {
+        foreach (var d in root.GetVisualDescendants())
+            if (d is TextBlock tb) return tb;
         return null;
     }
 
@@ -744,20 +1512,45 @@ public partial class MainWindow : Window
         _hasReceivedFrame = false;
         _playbackWatchdog.Stop();
         // Stop the auto-hide timer — otherwise its next tick would fire
-        // HideFullscreenUi *after* we've set RecentOverlay.IsVisible,
-        // which itself no-ops (no video) but leaves the timer running.
+        // HideFullscreenUi *after* we've torn down playback, leaving
+        // the timer running with no video to hide UI over.
         _hideUiTimer.Stop();
         ResetTransport();
 
         BackButton.IsVisible = false;
+        PipButton.IsVisible = false;
         TopGradient.IsVisible = false;
         BottomGradient.IsVisible = false;
         TransportBarContainer.IsVisible = false;
         CurrentMovieTitle.IsVisible = false;
+        SetLoadingState(false);
         VideoImage.IsVisible = false;
         VideoImage.Source = null;
+        if (PipImage is not null) PipImage.Source = null;
         VideoBorder.CornerRadius = new CornerRadius(0);
-        RecentOverlay.IsVisible = true;
+        VideoBorder.Background = Avalonia.Media.Brushes.Transparent;
+        // Tear down PiP if it was up — no video to mirror anymore.
+        ExitPipMode();
+
+        // No active playback now → strip the highlight from whatever
+        // recent-watched card was showing it. Synchronous so it doesn't
+        // linger for a tick after close.
+        _pendingPlayingPageUrl = null;
+        ApplyRecentPlayingHighlightNow();
+
+        // Return to whichever view the user came from, and keep the
+        // sidebar's active-tab highlight in sync.
+        switch (_originView)
+        {
+            case AppView.RecentlyWatched: ShowRecentlyWatchedView(); break;
+            case AppView.Settings: ShowSettingsView(); break;
+            default: ShowSearchView(); break;
+        }
+        _activeTab = _originView;
+        UpdateActiveNavTab();
+        // Status bar was sitting on "Playing." — refresh to the per-tab
+        // default (or the last search summary on the Search tab).
+        ResetStatusForActiveTab();
 
         // Leaving fullscreen when returning to the overlay — the overlay
         // isn't a playback surface, so fullscreen makes no sense there.
@@ -775,7 +1568,10 @@ public partial class MainWindow : Window
         // Ignore obviously-invalid reads (e.g. immediately after stream
         // tear-down). Save only when we have a real time.
         if (pos <= 0) return;
-        vm.Recent.UpsertAndSave(_currentVideoResult, pos, Math.Max(0, len));
+        // In-place update so the card's visual container isn't destroyed
+        // and recreated — recreation flickered the "Currently playing"
+        // overlay every time we paused / closed.
+        vm.Recent.UpdatePositionAndSave(_currentVideoResult, pos, Math.Max(0, len));
     }
 
     private void OpenSource_Click(object? sender, RoutedEventArgs e)
@@ -803,9 +1599,9 @@ public partial class MainWindow : Window
         if (e.Source is TextBox) return;
 
         // No video loaded → don't intercept media shortcuts. Pressing F
-        // while on the recently-watched overlay would otherwise take the
-        // app into fullscreen over an empty player surface.
-        if (RecentOverlay.IsVisible) return;
+        // while on an empty stage would otherwise take the app into
+        // fullscreen over a blank player surface.
+        if (_currentVideoResult is null) return;
 
         switch (e.Key)
         {
@@ -890,23 +1686,25 @@ public partial class MainWindow : Window
         {
             WindowState = _preFullScreenState;
             TitleBar.IsVisible = true;
-            SearchBar.IsVisible = true;
-            ResultsPanel.IsVisible = true;
             StatusText.IsVisible = true;
             SidebarRail.IsVisible = true;
             BodyGrid.ColumnDefinitions[0].Width = new GridLength(64);
-            ContentGrid.ColumnDefinitions[0].Width = new GridLength(380);
             RootGrid.Margin = new Thickness(12);
             ContentGrid.Margin = new Thickness(0, 12, 0, 0);
             Cursor = Cursor.Default;
 
-            // Only re-show video-specific UI if a video is actually loaded.
-            // Otherwise (e.g. exiting fullscreen as part of Back_Click, or
-            // somehow fullscreening the overlay) keep the transport + back
-            // arrow hidden so the recently-watched view stays clean.
+            // Restore the right view: full-size playback if a video is
+            // still loaded, otherwise the idle Search tab.
             var hasVideo = _currentVideoResult is not null;
+            if (hasVideo) ShowPlaybackView(_originView);
+            else ShowSearchView();
+
+            // Only re-show video-specific UI if a video is actually loaded.
+            // Otherwise (e.g. exiting fullscreen as part of Back_Click)
+            // keep the transport + back arrow hidden.
             TransportBarContainer.IsVisible = hasVideo;
             BackButton.IsVisible = hasVideo;
+            PipButton.IsVisible = hasVideo;
             TopGradient.IsVisible = hasVideo;
             BottomGradient.IsVisible = hasVideo;
             CurrentMovieTitle.IsVisible = hasVideo;
@@ -917,6 +1715,17 @@ public partial class MainWindow : Window
         }
         else
         {
+            // Pressing F (or otherwise entering fullscreen) while in PiP
+            // should fullscreen the actual video, not the small PiP frame.
+            // Exit PiP first so the full-size video stage is mounted, then
+            // enter fullscreen against that.
+            if (_isPipMode)
+            {
+                ExitPipMode();
+                if (_currentVideoResult is not null)
+                    ShowPlaybackView(_originView);
+            }
+
             _preFullScreenState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState;
             WindowState = WindowState.FullScreen;
             TitleBar.IsVisible = false;
@@ -949,6 +1758,7 @@ public partial class MainWindow : Window
         if (_currentVideoResult is null) return;
         TransportBarContainer.IsVisible = true;
         BackButton.IsVisible = true;
+        PipButton.IsVisible = true;
         TopGradient.IsVisible = true;
         BottomGradient.IsVisible = true;
         CurrentMovieTitle.IsVisible = true;
@@ -963,6 +1773,7 @@ public partial class MainWindow : Window
         if (_currentVideoResult is null) return;
         TransportBarContainer.IsVisible = false;
         BackButton.IsVisible = false;
+        PipButton.IsVisible = false;
         TopGradient.IsVisible = false;
         BottomGradient.IsVisible = false;
         CurrentMovieTitle.IsVisible = false;
@@ -991,8 +1802,6 @@ public partial class MainWindow : Window
             _flyoutHandlerAttached = true;
         }
 
-        // Show the ✓ / ✗ state right away if a key is already saved.
-        TmdbKeyBox_LostFocus(TmdbKeyBox, new RoutedEventArgs());
     }
 
     private void SourcesFlyoutPanel_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -1031,12 +1840,18 @@ public partial class MainWindow : Window
 
     private void TmdbKeyBox_KeyDown(object? sender, KeyEventArgs e)
     {
+        // Enter just defocuses the field; validation only runs when the
+        // user clicks the Check button.
         if (e.Key == Key.Enter)
         {
-            // Losing focus triggers validation via LostFocus.
             SourcesFlyoutPanel?.Focus();
             e.Handled = true;
         }
+    }
+
+    private void ValidateTmdbKey_Click(object? sender, RoutedEventArgs e)
+    {
+        ValidateTmdbKey();
     }
 
     // HTTP client reused across validation calls. Short timeout — we want
@@ -1050,7 +1865,7 @@ public partial class MainWindow : Window
     // outdated keystrokes don't overwrite the current status.
     private int _tmdbValidationGeneration;
 
-    private async void TmdbKeyBox_LostFocus(object? sender, RoutedEventArgs e)
+    private async void ValidateTmdbKey()
     {
         var key = TmdbKeyBox?.Text?.Trim();
         if (string.IsNullOrEmpty(key))
@@ -1079,12 +1894,77 @@ public partial class MainWindow : Window
             SetTmdbKeyStatus("✗", Avalonia.Media.Brushes.Tomato);
     }
 
+    // Auto-revert timer: after a validation result is shown for ~3s, the
+    // result label disappears and the Check button comes back.
+    private DispatcherTimer? _tmdbResultRevertTimer;
+
     private void SetTmdbKeyStatus(string glyph, Avalonia.Media.IBrush? brush)
     {
-        if (TmdbKeyStatusIcon is null) return;
-        TmdbKeyStatusIcon.Text = glyph;
-        if (brush is not null)
-            TmdbKeyStatusIcon.Foreground = brush;
+        // Legacy text-glyph indicator (still updated for any consumers
+        // that rely on it; the visible UI is the Check button below).
+        if (TmdbKeyStatusIcon is not null)
+        {
+            TmdbKeyStatusIcon.Text = glyph;
+            if (brush is not null)
+                TmdbKeyStatusIcon.Foreground = brush;
+        }
+
+        // Cancel any pending revert from a prior validation.
+        _tmdbResultRevertTimer?.Stop();
+
+        if (glyph == "✓" || glyph == "✗")
+        {
+            // Show result label in place of the Check button.
+            if (TmdbCheckIconHost is not null) TmdbCheckIconHost.IsVisible = glyph == "✓";
+            if (TmdbInvalidIconHost is not null) TmdbInvalidIconHost.IsVisible = glyph == "✗";
+            if (TmdbResultText is not null)
+            {
+                TmdbResultText.Text = glyph == "✓" ? "Valid" : "Not valid";
+                TmdbResultText.Foreground = glyph == "✓"
+                    ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x3F, 0xAA, 0x63))
+                    : new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0xD9, 0x54, 0x4D));
+            }
+            if (TmdbResultLabel is not null) TmdbResultLabel.IsVisible = true;
+            if (TmdbValidateBtn is not null) TmdbValidateBtn.IsVisible = false;
+
+            _tmdbResultRevertTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _tmdbResultRevertTimer.Tick -= OnTmdbResultRevert;
+            _tmdbResultRevertTimer.Tick += OnTmdbResultRevert;
+            _tmdbResultRevertTimer.Start();
+        }
+        else
+        {
+            // Idle / loading / empty state — show the Check button.
+            if (TmdbResultLabel is not null) TmdbResultLabel.IsVisible = false;
+            if (TmdbValidateBtn is not null) TmdbValidateBtn.IsVisible = true;
+        }
+    }
+
+    private void OnTmdbResultRevert(object? sender, EventArgs e)
+    {
+        _tmdbResultRevertTimer?.Stop();
+        if (TmdbResultLabel is not null) TmdbResultLabel.IsVisible = false;
+        if (TmdbValidateBtn is not null) TmdbValidateBtn.IsVisible = true;
+    }
+
+    // Click on empty space inside the settings card removes focus from
+    // any text-entry control (NumericUpDown / TMDB TextBox) — without
+    // this, the field keeps its caret/selection until you tab away.
+    private void SettingsBackground_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Visual v && IsInsideEditableInput(v)) return;
+        SourcesFlyoutPanel?.Focus();
+    }
+
+    private static bool IsInsideEditableInput(Visual origin)
+    {
+        Visual? cur = origin;
+        while (cur is not null)
+        {
+            if (cur is TextBox or NumericUpDown) return true;
+            cur = cur.GetVisualParent();
+        }
+        return false;
     }
 
     private const int ResizeBorder = 6;

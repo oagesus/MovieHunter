@@ -24,7 +24,7 @@ public partial class SourcesSettings : ObservableObject
     [ObservableProperty] private bool _tmdbEnabled;
     [ObservableProperty] private string _tmdbApiKey = "";
 
-    [ObservableProperty] private string _theme = "System";
+    [ObservableProperty] private string _theme = "LightLavender";
 
     [ObservableProperty] private int _volume = 100;
 

@@ -98,7 +98,10 @@ public partial class App : Application
                 app.Resources.MergedDictionaries.Add(GetLightApricotOverrides());
                 break;
             default:
-                app.RequestedThemeVariant = ThemeVariant.Default;
+                // No saved theme (or an unrecognized one) → calm-cinema
+                // default per the design system.
+                app.RequestedThemeVariant = ThemeVariant.Light;
+                app.Resources.MergedDictionaries.Add(GetLightLavenderOverrides());
                 break;
         }
     }

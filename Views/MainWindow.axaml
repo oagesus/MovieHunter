@@ -47,15 +47,15 @@
 
         <!-- Position slider (in the transport bar, sitting on the dark
              video background) — explicit white-ish track + accent-colored
-             filled portion, so the unfilled remainder stays visible
-             regardless of which theme override is active. Matches the
-             design-system spec (rgba(255,255,255,0.28) track, accent fill). -->
+             filled portion. Track is kept consistently light on every
+             theme; FluentTheme's Light variant otherwise feeds a darker
+             SliderTrackFill resource through TemplateBinding which would
+             make the track unreadable on pastel themes. -->
         <Style Selector="Slider#PositionSlider /template/ RepeatButton#PART_IncreaseButton /template/ ContentPresenter,
                          Slider#PositionSlider /template/ RepeatButton#PART_DecreaseButton /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent"/>
         </Style>
         <Style Selector="Slider#PositionSlider /template/ Border#TrackBackground">
-            <Setter Property="Background" Value="#47FFFFFF"/>
             <Setter Property="Height" Value="4"/>
             <Setter Property="CornerRadius" Value="2"/>
         </Style>
@@ -128,43 +128,100 @@
             <Setter Property="Foreground" Value="White"/>
         </Style>
 
-        <!-- Cleaner scrollbar: always the same slim width, rounded thumb,
-             no expand-on-hover jump. -->
-        <Style Selector="ScrollBar:vertical">
-            <Setter Property="Width" Value="10"/>
-            <Setter Property="MinWidth" Value="10"/>
-            <Setter Property="AllowAutoHide" Value="False"/>
-            <Setter Property="Padding" Value="2"/>
+
+        <!-- Theme pills (per design-system spec): pill-shaped RadioButton
+             with a circular swatch + name. Active pill gets an accent
+             border + accent-soft fill. Custom Template strips the default
+             radio indicator dot. -->
+        <Style Selector="RadioButton.theme-pill">
+            <!-- Hardcoded neutral gray for idle / hover so unselected pills
+                 stay rock-stable as you switch themes (DynamicResources
+                 inside a Flyout sometimes lag behind merged-dictionary
+                 swaps; using fixed alpha-grays bypasses that entirely). -->
+            <Setter Property="Background" Value="#10808080"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,6,14,6"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <ControlTemplate TargetType="RadioButton">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
         </Style>
-        <Style Selector="ScrollBar:horizontal">
-            <Setter Property="Height" Value="10"/>
-            <Setter Property="MinHeight" Value="10"/>
-            <Setter Property="AllowAutoHide" Value="False"/>
-            <Setter Property="Padding" Value="2"/>
+        <!-- Hover: ONLY the background changes (slightly stronger gray). -->
+        <Style Selector="RadioButton.theme-pill:pointerover">
+            <Setter Property="Background" Value="#22808080"/>
         </Style>
-        <Style Selector="ScrollBar /template/ Thumb">
-            <Setter Property="Background" Value="#55000000"/>
-            <Setter Property="CornerRadius" Value="3"/>
-            <Setter Property="MinHeight" Value="24"/>
-            <Setter Property="MinWidth" Value="24"/>
-        </Style>
-        <Style Selector="ScrollBar /template/ Thumb:pointerover">
-            <Setter Property="Background" Value="#88000000"/>
-        </Style>
-        <Style Selector="ScrollBar /template/ Thumb:pressed">
-            <Setter Property="Background" Value="#AA000000"/>
-        </Style>
-        <Style Selector="ScrollBar /template/ RepeatButton">
-            <Setter Property="IsVisible" Value="False"/>
-        </Style>
-        <Style Selector="ScrollBar:vertical /template/ Border#TrackBackground,
-                         ScrollBar:horizontal /template/ Border#TrackBackground">
-            <Setter Property="Background" Value="#10000000"/>
-            <Setter Property="CornerRadius" Value="3"/>
+        <!-- Selected pill: colors are set imperatively in code-behind
+             (UpdateActivePill) right after App.ApplyTheme runs, so the
+             border + bg always reflect the *just-applied* theme. The
+             previous Style-based approach via DynamicResource lagged
+             inside Flyout content. -->
+
+        <!-- Theme-pill swatch ring: hardcoded subtle dark stroke so the
+             swatch dot is consistently defined on light and dark
+             backgrounds (theme-aware brush lagged behind merged-dict
+             swaps inside the Flyout). -->
+        <Style Selector="Ellipse.swatch">
+            <Setter Property="Stroke" Value="#1F000000"/>
+            <Setter Property="StrokeThickness" Value="1"/>
         </Style>
 
-        <!-- Sidebar nav-rail buttons. 44×44, ghost by default, accent-soft
-             fill on hover. -->
+        <!-- Result-row action buttons (Play / Open source) — transparent
+             at all states; only the Path stroke flips to the active
+             theme accent on pointer-over. Same approach as the sidebar
+             nav. -->
+        <Style Selector="Button.result-action /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.result-action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.result-action:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.result-action Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Button.result-action:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+
+        <!-- Search-result rows: 10px corner radius, surface-2 fill on
+             hover, accent-soft fill when selected. Matches the design
+             system's .mh-result-row spec. -->
+        <Style Selector="ListBox.results ListBoxItem">
+            <!-- 8px L/T/B + 16px right so the action buttons sit clear of
+                 the 10px overlay scrollbar (with 6px breathing room). -->
+            <Setter Property="Padding" Value="8,8,16,8"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
+        <Style Selector="ListBox.results ListBoxItem /template/ ContentPresenter">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="ListBox.results ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+        </Style>
+
+        <!-- Sidebar nav-rail buttons: 44×44, fully transparent, no hover
+             background — only the icon stroke flips to the active theme's
+             accent on pointer-over. -->
         <Style Selector="Button.nav">
             <Setter Property="Width" Value="44"/>
             <Setter Property="Height" Value="44"/>
@@ -178,7 +235,58 @@
             <Setter Property="FontSize" Value="16"/>
         </Style>
         <Style Selector="Button.nav /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.nav:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <!-- Path stroke retints to the theme accent on pointer-over.
+             Stroke is set on a Style (not inline on the Path) so the
+             :pointerover override can win — inline values have higher
+             priority than Style setters. -->
+        <Style Selector="Button.nav Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Button.nav:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <!-- Active tab: same accent stroke as hover, persistent so the
+             user can see at a glance which sidebar tab they're on. -->
+        <Style Selector="Button.nav.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+
+        <!-- Flat progress bar for recent-watched cards. The default
+             FluentTheme ProgressBar template adds internal padding /
+             rounded corners that eat both ends of a 3-px-tall bar
+             (looked like the first / last ~10% never lit up). This
+             template is just a track Border + a left-anchored
+             PART_Indicator whose width Avalonia sets directly from
+             Value, so the fill maps exactly to 0–100%. -->
+        <Style Selector="ProgressBar.recent-progress">
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#22808080"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemAccentColorBrush}"/>
+            <Setter Property="Template">
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            ClipToBounds="True">
+                        <Border x:Name="PART_Indicator"
+                                Background="{TemplateBinding Foreground}"
+                                HorizontalAlignment="Left"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
         </Style>
 
         <!-- Primary CTA — accent fill, pill shape, white label. From the
@@ -188,7 +296,7 @@
             <Setter Property="Background" Value="{DynamicResource SystemAccentColorBrush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="999"/>
+            <Setter Property="CornerRadius" Value="6"/>
         </Style>
         <Style Selector="Button.primary">
             <Setter Property="Foreground" Value="White"/>
@@ -199,10 +307,12 @@
         <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.primary:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark2Brush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
         </Style>
 
         <!-- Recently-watched card: suppress the default button hover
@@ -282,6 +392,70 @@
         <Style Selector="Button.back:pointerover">
             <Setter Property="RenderTransform" Value="scale(1.3)"/>
         </Style>
+
+        <!-- Search bar input fields: pill shape, subtle tinted fill, no
+             visible border in idle / hover; accent-colored border only
+             when focused. Mirrors the design-system spec. -->
+        <Style Selector="TextBox.search-input">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="MinHeight" Value="32"/>
+        </Style>
+        <Style Selector="TextBox.search-input /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="TextBox.search-input:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="TextBox.search-input:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <Style Selector="TextBox.search-input:focus-within /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+
+        <!-- Same look for NumericUpDown. FluentTheme's inner ButtonSpinner
+             has its own per-state Background that otherwise wins over the
+             outer NumericUpDown's TemplateBinding, so we target it directly
+             via /template/ for idle / hover / focus. -->
+        <Style Selector="NumericUpDown.search-input">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="NumericUpDown.search-input /template/ ButtonSpinner">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="NumericUpDown.search-input:pointerover /template/ ButtonSpinner">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="NumericUpDown.search-input:focus-within /template/ ButtonSpinner">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <!-- Suppress the inner TextBox's own border/background entirely.
+             FluentTheme repaints it on hover/focus with a rectangular
+             corner radius, which broke the pill shape and added a
+             stray rectangle outline over the outer ButtonSpinner. -->
+        <Style Selector="NumericUpDown.search-input TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*">
@@ -303,80 +477,27 @@
                        VerticalAlignment="Center"
                        Margin="12,0,8,0"/>
             <Button Grid.Column="1"
-                    ToolTip.Tip="Theme"
+                    ToolTip.Tip="Themes"
                     Width="28" Height="28"
                     Padding="0"
                     Background="Transparent"
                     BorderBrush="Transparent"
                     Cursor="Arrow"
                     HorizontalContentAlignment="Center"
-                    VerticalContentAlignment="Center">
+                    VerticalContentAlignment="Center"
+                    Click="ThemeBtn_Click">
                 <Viewbox Width="14" Height="14">
                     <Grid Width="24" Height="24">
-                        <!-- Lucide palette: round body w/ paint dots, fits a
-                             "theme picker" affordance better than a half-circle. -->
-                        <Path Data="M 12 2 a 10 10 0 1 0 0 20 a 4 4 0 0 1 0 -8 a 4 4 0 0 0 0 -8 z M 9 8 a 1 1 0 1 0 0 0 z M 16 6 a 1 1 0 1 0 0 0 z M 18 11 a 1 1 0 1 0 0 0 z M 14 17 a 1 1 0 1 0 0 0 z"
+                        <!-- Lucide palette — stroke body + 4 filled paint dots. -->
+                        <Path Data="M 12 2 C 6.5 2 2 6.5 2 12 s 4.5 10 10 10 c 0.926 0 1.648 -0.746 1.648 -1.688 0 -0.437 -0.18 -0.835 -0.437 -1.125 -0.29 -0.289 -0.438 -0.652 -0.438 -1.125 a 1.64 1.64 0 0 1 1.668 -1.668 h 1.996 c 3.051 0 5.555 -2.503 5.555 -5.554 C 21.965 6.012 17.461 2 12 2 z"
                               Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
                               StrokeThickness="1.6"
                               StrokeLineCap="Round" StrokeJoin="Round"
                               Fill="Transparent"/>
+                        <Path Data="M 14.5 6.5 a 1 1 0 1 1 -2 0 a 1 1 0 0 1 2 0 z M 18.5 10.5 a 1 1 0 1 1 -2 0 a 1 1 0 0 1 2 0 z M 9.5 7.5 a 1 1 0 1 1 -2 0 a 1 1 0 0 1 2 0 z M 7.5 12.5 a 1 1 0 1 1 -2 0 a 1 1 0 0 1 2 0 z"
+                              Fill="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                     </Grid>
                 </Viewbox>
-                <Button.Flyout>
-                    <Flyout Placement="Bottom">
-                        <StackPanel Width="200" Spacing="4">
-                            <TextBlock Text="SYSTEM THEMES" FontSize="11" Opacity="0.6"/>
-                            <RadioButton x:Name="SystemThemeRadio"
-                                         Content="System"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="SystemTheme_Checked"/>
-                            <RadioButton x:Name="LightThemeRadio"
-                                         Content="Light (System Accent)"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="LightTheme_Checked"/>
-                            <RadioButton x:Name="DarkThemeRadio"
-                                         Content="Dark (System Accent)"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="DarkTheme_Checked"/>
-                            <Separator Margin="0,4"/>
-                            <TextBlock Text="PASTEL THEMES" FontSize="11" Opacity="0.6"/>
-                            <RadioButton x:Name="LightLavenderThemeRadio"
-                                         Content="Lavender"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="LightLavenderTheme_Checked"/>
-                            <RadioButton x:Name="LightMintThemeRadio"
-                                         Content="Mint"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="LightMintTheme_Checked"/>
-                            <RadioButton x:Name="LightApricotThemeRadio"
-                                         Content="Apricot"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="LightApricotTheme_Checked"/>
-                            <Separator Margin="0,4"/>
-                            <TextBlock Text="CUSTOM THEMES" FontSize="11" Opacity="0.6"/>
-                            <RadioButton x:Name="CatppuccinThemeRadio"
-                                         Content="Catppuccin"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="CatppuccinTheme_Checked"/>
-                            <RadioButton x:Name="DisneyPlusThemeRadio"
-                                         Content="Disney+"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="DisneyPlusTheme_Checked"/>
-                            <RadioButton x:Name="DraculaThemeRadio"
-                                         Content="Dracula"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="DraculaTheme_Checked"/>
-                            <RadioButton x:Name="NetflixThemeRadio"
-                                         Content="Netflix"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="NetflixTheme_Checked"/>
-                            <RadioButton x:Name="PrimeVideoThemeRadio"
-                                         Content="Prime Video"
-                                         GroupName="Theme"
-                                         IsCheckedChanged="PrimeVideoTheme_Checked"/>
-                        </StackPanel>
-                    </Flyout>
-                </Button.Flyout>
             </Button>
             <StackPanel Grid.Column="3" Orientation="Horizontal">
                 <Button Classes="caption"
@@ -449,12 +570,12 @@
                     </Grid>
                 </Viewbox>
                 <Button Classes="nav"
+                        x:Name="NavSearchBtn"
                         Click="NavSearch_Click"
                         ToolTip.Tip="Search">
                     <Viewbox Width="20" Height="20">
                         <Grid Width="24" Height="24">
                             <Path Data="M 11 3 a 8 8 0 1 0 0 16 a 8 8 0 1 0 0 -16 M 21 21 L 16.65 16.65"
-                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                   StrokeThickness="1.8"
                                   StrokeLineCap="Round" StrokeJoin="Round"
                                   Fill="Transparent"/>
@@ -462,12 +583,12 @@
                     </Viewbox>
                 </Button>
                 <Button Classes="nav"
+                        x:Name="NavRecentBtn"
                         Click="NavRecent_Click"
                         ToolTip.Tip="Recently watched">
                     <Viewbox Width="20" Height="20">
                         <Grid Width="24" Height="24">
                             <Path Data="M 12 2 a 10 10 0 1 0 0 20 a 10 10 0 1 0 0 -20 M 12 6 V 12 L 16 14"
-                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                   StrokeThickness="1.8"
                                   StrokeLineCap="Round" StrokeJoin="Round"
                                   Fill="Transparent"/>
@@ -475,14 +596,13 @@
                     </Viewbox>
                 </Button>
                 <Button Classes="nav"
+                        x:Name="SettingsBtn"
                         Click="NavSettings_Click"
                         ToolTip.Tip="Settings">
                     <Viewbox Width="20" Height="20">
                         <Grid Width="24" Height="24">
-                            <!-- Sliders icon (Lucide) — fits the "Sources" flyout
-                                 better than a gear and is much simpler to render. -->
-                            <Path Data="M 4 21 v -7 M 4 10 V 3 M 12 21 v -9 M 12 8 V 3 M 20 21 v -5 M 20 12 V 3 M 1 14 h 6 M 9 8 h 6 M 17 16 h 6"
-                                  Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            <!-- Lucide settings (gear). -->
+                            <Path Data="M 12.22 2 h -0.44 a 2 2 0 0 0 -2 2 v 0.18 a 2 2 0 0 1 -1 1.73 l -0.43 0.25 a 2 2 0 0 1 -2 0 l -0.15 -0.08 a 2 2 0 0 0 -2.73 0.73 l -0.22 0.38 a 2 2 0 0 0 0.73 2.73 l 0.15 0.1 a 2 2 0 0 1 1 1.72 v 0.51 a 2 2 0 0 1 -1 1.74 l -0.15 0.09 a 2 2 0 0 0 -0.73 2.73 l 0.22 0.38 a 2 2 0 0 0 2.73 0.73 l 0.15 -0.08 a 2 2 0 0 1 2 0 l 0.43 0.25 a 2 2 0 0 1 1 1.73 V 20 a 2 2 0 0 0 2 2 h 0.44 a 2 2 0 0 0 2 -2 v -0.18 a 2 2 0 0 1 1 -1.73 l 0.43 -0.25 a 2 2 0 0 1 2 0 l 0.15 0.08 a 2 2 0 0 0 2.73 -0.73 l 0.22 -0.39 a 2 2 0 0 0 -0.73 -2.73 l -0.15 -0.08 a 2 2 0 0 1 -1 -1.74 v -0.5 a 2 2 0 0 1 1 -1.74 l 0.15 -0.09 a 2 2 0 0 0 0.73 -2.73 l -0.22 -0.38 a 2 2 0 0 0 -2.73 -0.73 l -0.15 0.08 a 2 2 0 0 1 -2 0 l -0.43 -0.25 a 2 2 0 0 1 -1 -1.73 V 4 a 2 2 0 0 0 -2 -2 z M 12 15 a 3 3 0 1 0 0 -6 a 3 3 0 0 0 0 6 z"
                                   StrokeThickness="1.8"
                                   StrokeLineCap="Round" StrokeJoin="Round"
                                   Fill="Transparent"/>
@@ -494,107 +614,57 @@
 
     <Grid Grid.Column="1" x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="12">
 
-        <Grid x:Name="SearchBar" Grid.Row="0" ColumnDefinitions="*,110,Auto,Auto">
-            <TextBox Grid.Column="0" x:Name="TitleBox" Margin="0,0,8,0"
+        <Grid x:Name="SearchBar" Grid.Row="0" ColumnDefinitions="*,110,Auto">
+            <TextBox Grid.Column="0" x:Name="TitleBox" Classes="search-input"
+                     Margin="0,0,8,0"
                      PlaceholderText="Title"
                      Text="{Binding Title}"/>
-            <TextBox Grid.Column="1" x:Name="YearBox" Margin="0,0,8,0"
+            <TextBox Grid.Column="1" x:Name="YearBox" Classes="search-input"
+                     Margin="0,0,8,0"
                      PlaceholderText="Year"
                      Text="{Binding Year}"/>
-            <Button  Grid.Column="2" x:Name="SettingsBtn"
-                     Width="32" Height="32" Padding="0" Margin="0,0,8,0"
-                     VerticalAlignment="Center"
-                     HorizontalContentAlignment="Center"
-                     VerticalContentAlignment="Center"
-                     ToolTip.Tip="Sources">
-                <Viewbox Width="18" Height="18">
-                    <Grid Width="24" Height="24">
-                        <Path Data="M 4 21 v -7 M 4 10 V 3 M 12 21 v -9 M 12 8 V 3 M 20 21 v -5 M 20 12 V 3 M 1 14 h 6 M 9 8 h 6 M 17 16 h 6"
-                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                              StrokeThickness="1.8"
-                              StrokeLineCap="Round" StrokeJoin="Round"
-                              Fill="Transparent"/>
-                    </Grid>
-                </Viewbox>
-                <Button.Flyout>
-                    <Flyout Placement="Bottom" Opened="SourcesFlyout_Opened">
-                        <StackPanel x:Name="SourcesFlyoutPanel"
-                                    Width="300" Spacing="6"
-                                    Focusable="True"
-                                    Background="Transparent">
-                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                                <TextBlock Grid.Column="0" Text="Results per source:"
-                                           VerticalAlignment="Center"/>
-                                <NumericUpDown Grid.Column="1"
-                                               x:Name="ResultsPerSourceBox"
-                                               Value="{Binding Sources.ResultsPerSource}"
-                                               Minimum="1"
-                                               FormatString="0"
-                                               ShowButtonSpinner="False"
-                                               IsTabStop="False"
-                                               KeyDown="ResultsPerSourceBox_KeyDown"
-                                               ValueChanged="ResultsPerSourceBox_ValueChanged"
-                                               Width="70" Height="28"/>
-                            </Grid>
-                            <Separator Margin="0,4"/>
-                            <TextBlock Text="METADATA" FontSize="11" Opacity="0.6"/>
-                            <CheckBox Content="TMDB"
-                                      IsChecked="{Binding Sources.TmdbEnabled}"
-                                      Margin="0,2"/>
-                            <!-- Icon column is a fixed 20px so the TextBox
-                                 position never shifts based on icon content.
-                                 The icon aligns under the CheckBox indicator. -->
-                            <Grid ColumnDefinitions="20,*"
-                                  IsVisible="{Binding Sources.TmdbEnabled}"
-                                  Margin="0,2,0,0">
-                                <TextBlock Grid.Column="0"
-                                           x:Name="TmdbKeyStatusIcon"
-                                           VerticalAlignment="Center"
-                                           HorizontalAlignment="Center"
-                                           FontWeight="Bold"/>
-                                <TextBox Grid.Column="1"
-                                         x:Name="TmdbKeyBox"
-                                         Text="{Binding Sources.TmdbApiKey, Mode=TwoWay}"
-                                         PlaceholderText="API key"
-                                         KeyDown="TmdbKeyBox_KeyDown"
-                                         LostFocus="TmdbKeyBox_LostFocus"/>
-                            </Grid>
-                            <Separator Margin="0,4"/>
-                            <TextBlock Text="SOURCES" FontSize="11" Opacity="0.6"/>
-                            <ScrollViewer MaxHeight="380">
-                                <ItemsControl ItemsSource="{Binding Sources.Entries}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="services:SourceToggle">
-                                            <CheckBox Content="{Binding DisplayName}"
-                                                      IsChecked="{Binding Enabled}"
-                                                      Margin="0,2"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                        </StackPanel>
-                    </Flyout>
-                </Button.Flyout>
-            </Button>
-            <Button  Grid.Column="3" Classes="primary" Content="Search" MinWidth="90"
+            <Button  Grid.Column="2" Classes="primary" MinWidth="90"
                      Command="{Binding SearchCommand}"
-                     IsEnabled="{Binding !IsSearching}"/>
+                     IsEnabled="{Binding !IsSearching}">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Viewbox Width="16" Height="16">
+                        <Grid Width="24" Height="24">
+                            <Path Data="M 11 3 a 8 8 0 1 0 0 16 a 8 8 0 1 0 0 -16 M 21 21 L 16.65 16.65"
+                                  Stroke="White"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
+                    </Viewbox>
+                    <TextBlock Text="Search" Foreground="White" FontWeight="Medium"/>
+                </StackPanel>
+            </Button>
         </Grid>
 
         <Grid Grid.Row="1" x:Name="ContentGrid" Margin="0,12,0,0">
+            <!-- Default: results panel takes the full content width, video
+                 stage column is collapsed. ShowPlaybackView swaps these
+                 (Column 0 = 0, Column 1 = *) when a movie starts playing. -->
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="380"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="0"/>
             </Grid.ColumnDefinitions>
 
             <Border x:Name="ResultsPanel" Grid.Column="0"
-                    BorderBrush="#33000000" BorderThickness="1"
-                    CornerRadius="12" Margin="0,0,12,0"
+                    Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="6"
                     ClipToBounds="True"
                     BoxShadow="0 4 16 0 #11281E50">
-                <ListBox ItemsSource="{Binding Results}"
-                         SelectedItem="{Binding SelectedResult}"
-                         KeyboardNavigation.TabNavigation="Continue">
+                <Grid>
+                    <ListBox Classes="results"
+                             ItemsSource="{Binding Results}"
+                             SelectedItem="{Binding SelectedResult}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             KeyboardNavigation.TabNavigation="Continue">
                     <ListBox.Styles>
                         <!-- Tab should skip the row itself and go directly
                              to the buttons inside the row. -->
@@ -615,8 +685,8 @@
                             <Grid Margin="1" ColumnDefinitions="Auto,*,Auto">
                                 <!-- Poster from hdfilme (2:3 aspect). -->
                                 <Border Grid.Column="0" Width="60" Height="90"
-                                        Margin="0,0,6,0"
-                                        Background="#22000000"
+                                        Margin="0,0,10,0"
+                                        Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
                                         CornerRadius="6"
                                         ClipToBounds="True">
                                     <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
@@ -624,36 +694,180 @@
                                 </Border>
                                 <StackPanel Grid.Column="1" Spacing="2"
                                             VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding Source}" FontSize="11" Opacity="0.7"/>
-                                    <TextBlock Text="{Binding MetaLine}" FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding Title}"
+                                               FontWeight="Medium"
+                                               FontSize="14"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    <TextBlock Text="{Binding MetaLine}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal"
                                             Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
-                                    <Button Content="▶" Tag="{Binding}"
+                                    <Button Classes="result-action"
+                                            Tag="{Binding}"
                                             Click="PlayResult_Click"
                                             ToolTip.Tip="Play this result (Enter)"
-                                            Width="32" Height="32" Padding="0"
+                                            Width="40" Height="40" Padding="0"
                                             HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center"/>
-                                    <Button Content="🌐" Tag="{Binding}"
+                                            VerticalContentAlignment="Center">
+                                        <Viewbox Width="22" Height="22">
+                                            <Grid Width="24" Height="24">
+                                                <Path Data="M 6 3 L 20 12 L 6 21 Z"
+                                                      StrokeThickness="2"
+                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Grid>
+                                        </Viewbox>
+                                    </Button>
+                                    <Button Classes="result-action"
+                                            Tag="{Binding}"
                                             Click="OpenSource_Click"
                                             ToolTip.Tip="Open source page in browser (Enter)"
-                                            Width="32" Height="32" Padding="0"
+                                            Width="40" Height="40" Padding="0"
                                             HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center"/>
+                                            VerticalContentAlignment="Center">
+                                        <Viewbox Width="22" Height="22">
+                                            <Grid Width="24" Height="24">
+                                                <Path Data="M 15 3 h 6 v 6 M 10 14 L 21 3 M 18 13 v 6 a 2 2 0 0 1 -2 2 H 5 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 h 6"
+                                                      StrokeThickness="2"
+                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Grid>
+                                        </Viewbox>
+                                    </Button>
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <StackPanel x:Name="SearchResultsEmptyLabel"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="14"
+                            IsHitTestVisible="False">
+                    <!-- Icon swap: magnifying glass when idle, spinning
+                         loader-circle while a search is in flight. -->
+                    <Grid Width="48" Height="48" HorizontalAlignment="Center">
+                        <Viewbox IsVisible="{Binding !IsSearching}"
+                                 Opacity="0.7">
+                            <Grid Width="24" Height="24">
+                                <!-- Lucide search — same magnifying glass
+                                     as the sidebar nav icon. -->
+                                <Path Data="M 11 3 a 8 8 0 1 0 0 16 a 8 8 0 1 0 0 -16 M 21 21 L 16.65 16.65"
+                                      Stroke="{DynamicResource SystemAccentColorBrush}"
+                                      StrokeThickness="1.8"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Fill="Transparent"/>
+                            </Grid>
+                        </Viewbox>
+                        <Viewbox IsVisible="{Binding IsSearching}">
+                            <Grid Width="24" Height="24"
+                                  x:Name="SearchEmptySpinner"
+                                  RenderTransformOrigin="50%,50%">
+                                <Grid.Styles>
+                                    <Style Selector="Grid#SearchEmptySpinner">
+                                        <Style.Animations>
+                                            <Animation Duration="0:0:1"
+                                                       IterationCount="INFINITE">
+                                                <KeyFrame Cue="0%">
+                                                    <Setter Property="RotateTransform.Angle" Value="0"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="100%">
+                                                    <Setter Property="RotateTransform.Angle" Value="360"/>
+                                                </KeyFrame>
+                                            </Animation>
+                                        </Style.Animations>
+                                    </Style>
+                                </Grid.Styles>
+                                <Grid.RenderTransform>
+                                    <RotateTransform/>
+                                </Grid.RenderTransform>
+                                <Path Data="M 21 12 a 9 9 0 1 1 -6.219 -8.56"
+                                      Stroke="{DynamicResource SystemAccentColorBrush}"
+                                      StrokeThickness="2.4"
+                                      StrokeLineCap="Round"
+                                      Fill="Transparent"/>
+                            </Grid>
+                        </Viewbox>
+                    </Grid>
+                    <TextBlock Text="Enter a title and click Search."
+                               IsVisible="{Binding !IsSearching}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxWidth="320"
+                               FontSize="14"
+                               Opacity="0.7"/>
+                    <TextBlock Text="Searching…"
+                               IsVisible="{Binding IsSearching}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxWidth="320"
+                               FontSize="14"
+                               Opacity="0.7"/>
+                </StackPanel>
+                </Grid>
             </Border>
 
             <Grid Grid.Column="1">
-                <Border x:Name="VideoBorder" Background="Black" CornerRadius="0" ClipToBounds="True">
+                <Border x:Name="VideoBorder" Background="Transparent" CornerRadius="0" ClipToBounds="True">
                     <Grid x:Name="VideoOverlayRoot" Background="Transparent"
                           Focusable="True">
                         <Image x:Name="VideoImage" Stretch="Uniform" IsVisible="False"/>
+
+                        <!-- Loading overlay: shown from the moment the user
+                             picks a movie until the player's Playing event
+                             fires. Lucide loader-circle arc rotates via an
+                             infinite Avalonia animation. No background
+                             wash — the white spinner stands on its own
+                             against the video surface so there's nothing
+                             translucent left to "fade" when we hide it. -->
+                        <Grid x:Name="LoadingOverlay"
+                              IsHitTestVisible="False"
+                              IsVisible="False">
+                            <Viewbox Width="48" Height="48"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center">
+                                <Grid Width="24" Height="24"
+                                      x:Name="LoadingSpinner"
+                                      RenderTransformOrigin="50%,50%">
+                                    <Grid.Styles>
+                                        <Style Selector="Grid#LoadingSpinner">
+                                            <Style.Animations>
+                                                <Animation Duration="0:0:1"
+                                                           IterationCount="INFINITE">
+                                                    <KeyFrame Cue="0%">
+                                                        <Setter Property="RotateTransform.Angle" Value="0"/>
+                                                    </KeyFrame>
+                                                    <KeyFrame Cue="100%">
+                                                        <Setter Property="RotateTransform.Angle" Value="360"/>
+                                                    </KeyFrame>
+                                                </Animation>
+                                            </Style.Animations>
+                                        </Style>
+                                    </Grid.Styles>
+                                    <Grid.RenderTransform>
+                                        <RotateTransform/>
+                                    </Grid.RenderTransform>
+                                    <!-- Lucide loader-circle arc — three-
+                                         quarter circle with rounded ends.
+                                         Stroke uses the active theme's
+                                         accent so it picks up the user's
+                                         theme color. -->
+                                    <Path Data="M 21 12 a 9 9 0 1 1 -6.219 -8.56"
+                                          Stroke="{DynamicResource SystemAccentColorBrush}"
+                                          StrokeThickness="2.4"
+                                          StrokeLineCap="Round"
+                                          Fill="Transparent"/>
+                                </Grid>
+                            </Viewbox>
+                        </Grid>
 
                         <!-- Top gradient strip: dark at the top, gently
                              fades to transparent over ~200px with an
@@ -722,6 +936,7 @@
                                 </Viewbox>
                             </Border>
                         </Button>
+
                         <TextBlock x:Name="CurrentMovieTitle"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Top"
@@ -732,115 +947,6 @@
                                    TextTrimming="CharacterEllipsis"
                                    MaxWidth="600"
                                    IsVisible="False"/>
-
-                        <!-- Recently-watched overlay: shown when no video is
-                             loaded. Clicking a card resumes from the saved
-                             position. Hidden once the user plays something. -->
-                        <ScrollViewer x:Name="RecentOverlay"
-                                      Background="{DynamicResource SystemRegionBrush}"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      VerticalScrollBarVisibility="Auto"
-                                      Padding="16">
-                            <StackPanel>
-                                <TextBlock Text="Recently watched"
-                                           FontSize="18" FontWeight="SemiBold"
-                                           Margin="0,0,0,12"/>
-                                <TextBlock x:Name="RecentEmptyLabel"
-                                           Text="Search for a movie and play one — it'll show up here next time."
-                                           Opacity="0.6"
-                                           FontSize="13"/>
-                                <ItemsControl ItemsSource="{Binding Recent.Items}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Orientation="Horizontal"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="services:RecentWatch">
-                                            <Button Tag="{Binding}"
-                                                    Classes="recent-card"
-                                                    Click="RecentWatch_Click"
-                                                    PointerEntered="RecentCard_PointerEntered"
-                                                    PointerExited="RecentCard_PointerExited"
-                                                    Width="140" Margin="0,0,10,10"
-                                                    Padding="0"
-                                                    Background="Transparent">
-                                                <StackPanel>
-                                                    <!-- Explicit RectangleGeometry clip on the whole card:
-                                                         this is the Avalonia-recommended way to get
-                                                         pixel-perfect rounded corners (Border.ClipToBounds +
-                                                         CornerRadius has subpixel artifacts, see
-                                                         AvaloniaUI/Avalonia#2105 / #9980). One clip applies
-                                                         to every child — image, title overlay, hover border
-                                                         — so everything's curves line up exactly. -->
-                                                    <!-- Image AND title overlay share a single rounded
-                                                         Border — one CornerRadius + ClipToBounds clips both
-                                                         as a single visual so their edges can't diverge at
-                                                         the corners. Hover frame is stacked on top, same
-                                                         bounds and same radius. -->
-                                                    <Grid Width="140" Height="210">
-                                                        <Border Background="#33000000"
-                                                                CornerRadius="12"
-                                                                ClipToBounds="True"
-                                                                BoxShadow="0 4 16 0 #11281E50">
-                                                            <Panel>
-                                                                <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
-                                                                       Stretch="UniformToFill"/>
-                                                                <Border VerticalAlignment="Bottom"
-                                                                        Background="#CC000000"
-                                                                        Padding="6,4">
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="{Binding Title}"
-                                                                                   Foreground="White"
-                                                                                   FontSize="12"
-                                                                                   FontWeight="SemiBold"
-                                                                                   TextWrapping="Wrap"/>
-                                                                        <TextBlock Text="{Binding Source}"
-                                                                                   Foreground="#AAFFFFFF"
-                                                                                   FontSize="10"
-                                                                                   TextWrapping="Wrap"/>
-                                                                    </StackPanel>
-                                                                </Border>
-                                                            </Panel>
-                                                        </Border>
-                                                        <!-- "▸ Resume" hover overlay (per design system). Sits
-                                                             between the poster content and the hover frame; only
-                                                             visible while pointer is over the parent button. -->
-                                                        <Border Classes="resume"
-                                                                CornerRadius="12"
-                                                                Background="#80000000"
-                                                                IsHitTestVisible="False"
-                                                                IsVisible="False">
-                                                            <TextBlock Text="▸ Resume"
-                                                                       Foreground="White"
-                                                                       FontSize="13"
-                                                                       FontWeight="Medium"
-                                                                       HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"/>
-                                                        </Border>
-                                                        <Border Classes="poster"
-                                                                CornerRadius="12"
-                                                                BorderThickness="2"
-                                                                BorderBrush="Transparent"
-                                                                IsHitTestVisible="False"/>
-                                                    </Grid>
-                                                    <!-- Netflix-style progress strip below the poster. The
-                                                         Border clips the bar to a 2px pill so the edges of the
-                                                         filled / track portions are rounded. -->
-                                                    <Border Margin="0,4,0,0"
-                                                            CornerRadius="2"
-                                                            ClipToBounds="True">
-                                                        <ProgressBar Value="{Binding Progress, Mode=OneWay}"
-                                                                     Maximum="1"
-                                                                     Height="3"/>
-                                                    </Border>
-                                                </StackPanel>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </ScrollViewer>
 
                         <Border x:Name="TransportBarContainer"
                                 VerticalAlignment="Bottom"
@@ -859,27 +965,51 @@
                                     <Slider   Grid.Column="0" x:Name="PositionSlider"
                                               Minimum="0" Maximum="1000" Value="0"
                                               Focusable="False" IsTabStop="False"
-                                              VerticalAlignment="Center"/>
+                                              VerticalAlignment="Center">
+                                        <!-- Scoped resource overrides: the
+                                             unplayed track stays a consistent
+                                             translucent white in every state
+                                             so it reads on the dark video
+                                             gradient. FluentTheme's Light
+                                             variant otherwise resolves these
+                                             to dark grays which disappear.
+                                             Scoped here (not at Window level)
+                                             so the volume slider in the
+                                             popup, which sits on a theme-aware
+                                             surface, isn't affected. -->
+                                        <Slider.Resources>
+                                            <SolidColorBrush x:Key="SliderTrackFill" Color="#80FFFFFF"/>
+                                            <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#80FFFFFF"/>
+                                            <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#80FFFFFF"/>
+                                            <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="#80FFFFFF"/>
+                                        </Slider.Resources>
+                                    </Slider>
                                     <TextBlock Grid.Column="1" x:Name="DurationLabel" Classes="time"
                                                Text="00:00" Margin="12,0,0,0"
                                                TextAlignment="Right"
                                                VerticalAlignment="Center"/>
                                 </Grid>
                                 <Grid Grid.Row="1"
-                                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+                                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
                                     <Button Grid.Column="0" x:Name="PlayPauseBtn" Classes="transport"
                                             Click="PlayPause_Click"
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
                                             <Viewbox Width="30" Height="30">
                                                 <Grid Width="24" Height="24">
+                                                    <!-- Lucide play — stroke-only triangle. -->
                                                     <Path x:Name="PlayIcon"
                                                           Data="M 6 3 L 20 12 L 6 21 Z"
-                                                          Fill="White"/>
+                                                          Stroke="White" StrokeThickness="2"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                    <!-- Lucide pause — two stroke-only rounded rects
+                                                         (rx=1). Drawn as one Path with two subpaths. -->
                                                     <Path x:Name="PauseIcon"
-                                                          Data="M 8 4 L 8 20 M 16 4 L 16 20"
-                                                          Stroke="White" StrokeThickness="2.5"
-                                                          StrokeLineCap="Round"
+                                                          Data="M 7 4 H 9 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 7 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z M 15 4 H 17 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 15 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z"
+                                                          Stroke="White" StrokeThickness="2"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"
                                                           IsVisible="False"/>
                                                 </Grid>
                                             </Viewbox>
@@ -967,7 +1097,28 @@
                                             </StackPanel>
                                         </Border>
                                     </Popup>
-                                    <Button Grid.Column="5" Classes="transport"
+                                    <!-- Picture-in-picture toggle: grouped
+                                         with the fullscreen button per
+                                         standard video-player conventions
+                                         (YouTube / Netflix / browser-native
+                                         all sit PiP next to fullscreen). -->
+                                    <Button Grid.Column="5" x:Name="PipButton"
+                                            Classes="transport"
+                                            Focusable="False" IsTabStop="False"
+                                            Click="EnterPip_Click">
+                                        <Border Classes="transport-icon">
+                                            <Viewbox Width="26" Height="26">
+                                                <Grid Width="24" Height="24">
+                                                    <!-- Lucide picture-in-picture-2. -->
+                                                    <Path Data="M 21 9 V 6 a 2 2 0 0 0 -2 -2 H 5 a 2 2 0 0 0 -2 2 v 12 a 2 2 0 0 0 2 2 h 6 M 21 13 a 1 1 0 0 0 -1 -1 H 13 a 1 1 0 0 0 -1 1 v 6 a 1 1 0 0 0 1 1 h 7 a 1 1 0 0 0 1 -1 z"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
+                                            </Viewbox>
+                                        </Border>
+                                    </Button>
+                                    <Button Grid.Column="6" Classes="transport"
                                             Focusable="False" IsTabStop="False"
                                             Click="Fullscreen_Click">
                                         <Border Classes="transport-icon">
@@ -989,9 +1140,739 @@
             </Grid>
         </Grid>
 
+        <!-- Recently watched view: card-styled panel shown when the
+             sidebar's Recently watched button is active. Replaces the
+             search content grid; previously lived inside VideoOverlayRoot.
+             Card styling matches the design system (surface fill,
+             rounded corners, soft shadow). -->
+        <Border Grid.Row="1" x:Name="RecentlyWatchedPanel"
+                IsVisible="False"
+                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                BoxShadow="0 4 16 0 #11281E50"
+                ClipToBounds="True">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          Padding="28,24">
+                <StackPanel>
+                    <TextBlock Text="Recently watched"
+                               FontSize="22" FontWeight="Medium"
+                               Margin="0,0,0,28"/>
+                    <TextBlock x:Name="RecentEmptyLabel"
+                               Text="Search for a movie and play one — it'll show up here next time."
+                               Opacity="0.7"
+                               FontSize="13"
+                               Margin="0,0,0,4"/>
+                    <ItemsControl ItemsSource="{Binding Recent.Items}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="services:RecentWatch">
+                                <Button Tag="{Binding}"
+                                        Classes="recent-card"
+                                        Click="RecentWatch_Click"
+                                        PointerEntered="RecentCard_PointerEntered"
+                                        PointerExited="RecentCard_PointerExited"
+                                        Width="140" Margin="0,0,10,10"
+                                        Padding="0"
+                                        Background="Transparent">
+                                    <StackPanel>
+                                        <Grid Width="140" Height="210">
+                                            <Border Background="#33000000"
+                                                    CornerRadius="12"
+                                                    ClipToBounds="True"
+                                                    BoxShadow="0 4 16 0 #11281E50">
+                                                <Panel>
+                                                    <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
+                                                           Stretch="UniformToFill"/>
+                                                    <Border VerticalAlignment="Bottom"
+                                                            Background="#CC000000"
+                                                            Padding="6,4">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       Foreground="White"
+                                                                       FontSize="12"
+                                                                       FontWeight="SemiBold"
+                                                                       TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding Source}"
+                                                                       Foreground="#AAFFFFFF"
+                                                                       FontSize="10"
+                                                                       TextWrapping="Wrap"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Panel>
+                                            </Border>
+                                            <Border Classes="resume"
+                                                    CornerRadius="12"
+                                                    Background="#80000000"
+                                                    IsHitTestVisible="False"
+                                                    IsVisible="False">
+                                                <StackPanel HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center"
+                                                            Spacing="6">
+                                                    <Viewbox Width="36" Height="36"
+                                                             HorizontalAlignment="Center">
+                                                        <Grid Width="24" Height="24">
+                                                            <!-- Lucide play — stroke-only triangle. -->
+                                                            <Path Data="M 6 3 L 20 12 L 6 21 Z"
+                                                                  Stroke="White" StrokeThickness="2"
+                                                                  StrokeLineCap="Round"
+                                                                  StrokeJoin="Round"
+                                                                  Fill="Transparent"/>
+                                                        </Grid>
+                                                    </Viewbox>
+                                                    <TextBlock Text="Resume"
+                                                               Foreground="White"
+                                                               FontSize="13"
+                                                               FontWeight="Medium"
+                                                               HorizontalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Classes="poster"
+                                                    CornerRadius="12"
+                                                    BorderThickness="2"
+                                                    BorderBrush="Transparent"
+                                                    IsHitTestVisible="False"/>
+                                        </Grid>
+                                        <Border Margin="0,4,0,0"
+                                                CornerRadius="2"
+                                                ClipToBounds="True">
+                                            <ProgressBar Classes="recent-progress"
+                                                         Value="{Binding Progress, Mode=OneWay}"
+                                                         Maximum="1"
+                                                         Height="3"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Settings view: embedded panel that replaces ContentGrid in
+             the main area when the sidebar Settings button is clicked.
+             Same content as the previous Sources flyout, just inline. -->
+        <ScrollViewer Grid.Row="1" x:Name="SettingsPanel"
+                      IsVisible="False"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <Border Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="28,24"
+                    BoxShadow="0 4 16 0 #11281E50"
+                    PointerPressed="SettingsBackground_PointerPressed">
+                <StackPanel x:Name="SourcesFlyoutPanel"
+                            Spacing="0"
+                            Focusable="True">
+                    <!-- Header (title + subtitle), constrained width. -->
+                    <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6">
+                        <TextBlock Text="Settings" FontSize="22" FontWeight="Medium"/>
+                        <TextBlock Text="Theme, search, and metadata preferences."
+                                   FontSize="13"
+                                   Opacity="0.7"
+                                   Margin="0,0,0,28"/>
+                    </StackPanel>
+
+                    <!-- PASTEL THEMES SECTION -->
+                    <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6">
+                        <TextBlock Text="PASTEL THEMES" FontSize="11" Opacity="0.6"
+                                   Margin="0,0,0,10"/>
+                        <WrapPanel>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsLightLavenderRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="LightLavenderTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#9F8AE6"/>
+                                    <TextBlock Text="Lavender" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsLightMintRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="LightMintTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#7DC6A6"/>
+                                    <TextBlock Text="Mint" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsLightApricotRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="LightApricotTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#E8A76B"/>
+                                    <TextBlock Text="Apricot" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                        </WrapPanel>
+                    </StackPanel>
+
+                    <!-- DARK THEMES SECTION -->
+                    <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6"
+                                Margin="0,24,0,0">
+                        <TextBlock Text="DARK THEMES" FontSize="11" Opacity="0.6"
+                                   Margin="0,0,0,10"/>
+                        <WrapPanel>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsCatppuccinRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="CatppuccinTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#CBA6F7"/>
+                                    <TextBlock Text="Catppuccin" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsDisneyPlusRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="DisneyPlusTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#0063E5"/>
+                                    <TextBlock Text="Disney+" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsDraculaRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="DraculaTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#FF5555"/>
+                                    <TextBlock Text="Dracula" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsNetflixRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="NetflixTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#E50914"/>
+                                    <TextBlock Text="Netflix" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Classes="theme-pill"
+                                         x:Name="SettingsPrimeVideoRadio"
+                                         GroupName="ThemeSettings"
+                                         IsCheckedChanged="PrimeVideoTheme_Checked">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Ellipse Classes="swatch" Width="18" Height="18" Fill="#00A8E1"/>
+                                    <TextBlock Text="Prime Video" FontSize="13" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                        </WrapPanel>
+                    </StackPanel>
+
+                    <!-- Full-width separator -->
+                    <Separator Margin="0,24"/>
+
+                    <!-- SEARCH SECTION (results per source + sources) -->
+                    <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6">
+                        <TextBlock Text="SEARCH" FontSize="11" Opacity="0.6"
+                                   Margin="0,0,0,10"/>
+                        <Grid ColumnDefinitions="*,16,Auto" VerticalAlignment="Center" Margin="0,0,0,4">
+                            <TextBlock Grid.Column="0" Text="Results per source:"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="2"
+                                           x:Name="ResultsPerSourceBox"
+                                           Classes="search-input"
+                                           Value="{Binding Sources.ResultsPerSource}"
+                                           Minimum="1"
+                                           FormatString="0"
+                                           ShowButtonSpinner="False"
+                                           IsTabStop="False"
+                                           KeyDown="ResultsPerSourceBox_KeyDown"
+                                           ValueChanged="ResultsPerSourceBox_ValueChanged"
+                                           Width="70" Height="32"/>
+                        </Grid>
+                        <TextBlock Text="Sources" FontSize="13" FontWeight="Medium"
+                                   Margin="0,12,0,4"/>
+                        <ItemsControl ItemsSource="{Binding Sources.Entries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="services:SourceToggle">
+                                    <CheckBox Content="{Binding DisplayName}"
+                                              IsChecked="{Binding Enabled}"
+                                              Margin="0,2"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Full-width separator -->
+                    <Separator Margin="0,24"/>
+
+                    <!-- METADATA SECTION (TMDB) -->
+                    <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6">
+                        <TextBlock Text="METADATA" FontSize="11" Opacity="0.6"
+                                   Margin="0,0,0,10"/>
+                        <CheckBox Content="TMDB"
+                                  IsChecked="{Binding Sources.TmdbEnabled}"
+                                  Margin="0,2"/>
+                        <TextBlock Text="TMDB API KEY" FontSize="11" Opacity="0.6"
+                                   IsVisible="{Binding Sources.TmdbEnabled}"
+                                   Margin="0,12,0,6"/>
+                        <Grid ColumnDefinitions="*,8,Auto"
+                              IsVisible="{Binding Sources.TmdbEnabled}"
+                              Margin="0,0,0,4">
+                            <TextBox Grid.Column="0"
+                                     x:Name="TmdbKeyBox"
+                                     Classes="search-input"
+                                     Text="{Binding Sources.TmdbApiKey, Mode=TwoWay}"
+                                     PlaceholderText="Paste your TMDB v3 key"
+                                     KeyDown="TmdbKeyBox_KeyDown"/>
+                            <Grid Grid.Column="2">
+                                <!-- Idle: the "Check" button. Hidden after a
+                                     validation completes; restored after a
+                                     short delay. -->
+                                <Button x:Name="TmdbValidateBtn"
+                                        Classes="primary"
+                                        Click="ValidateTmdbKey_Click"
+                                        ToolTip.Tip="Validate key"
+                                        MinWidth="80" Height="32"
+                                        Padding="14,0"
+                                        Content="Check"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"/>
+                                <!-- Result label: replaces the button with
+                                     "✓ Valid" / "✗ Not valid" for ~3s, then
+                                     hides itself and the button comes back. -->
+                                <StackPanel x:Name="TmdbResultLabel"
+                                            Orientation="Horizontal" Spacing="6"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            IsVisible="False">
+                                    <Viewbox Width="14" Height="14"
+                                             x:Name="TmdbCheckIconHost"
+                                             IsVisible="False">
+                                        <Grid Width="24" Height="24">
+                                            <Path Data="M 4 12 L 9 17 L 20 6"
+                                                  Stroke="#3FAA63"
+                                                  StrokeThickness="2.4"
+                                                  StrokeLineCap="Round"
+                                                  StrokeJoin="Round"
+                                                  Fill="Transparent"/>
+                                        </Grid>
+                                    </Viewbox>
+                                    <Viewbox Width="14" Height="14"
+                                             x:Name="TmdbInvalidIconHost"
+                                             IsVisible="False">
+                                        <Grid Width="24" Height="24">
+                                            <Path Data="M 6 6 L 18 18 M 18 6 L 6 18"
+                                                  Stroke="#D9544D"
+                                                  StrokeThickness="2.4"
+                                                  StrokeLineCap="Round"
+                                                  StrokeJoin="Round"
+                                                  Fill="Transparent"/>
+                                        </Grid>
+                                    </Viewbox>
+                                    <TextBlock x:Name="TmdbResultText"
+                                               FontSize="14" FontWeight="Medium"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                        <!-- Hidden legacy text indicator (kept for backwards-compat
+                             with any code that pokes its Text). -->
+                        <TextBlock x:Name="TmdbKeyStatusIcon" IsVisible="False"/>
+                    </StackPanel>
+
+                    <!-- Helper text — pulled out of the MaxWidth=560 column so
+                         it spans the full panel width like the separators. -->
+                    <TextBlock Text="Used so we can match English and German movie titles, and rank search results by relevance and accuracy."
+                               FontSize="12" Opacity="0.7"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding Sources.TmdbEnabled}"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+            </Border>
+        </ScrollViewer>
+
         <TextBlock x:Name="StatusText" Grid.Row="2" Text="{Binding Status}"
                    Margin="0,8,0,0" Opacity="0.85"/>
     </Grid>
+
+    <!-- Picture-in-picture overlay: a floating mini-player that hosts the
+         video while the user navigates between Search / Recently watched /
+         Settings tabs. PipHost spans the entire Column 1 area (BodyGrid's
+         right column) but has no Background, so empty space is click-
+         transparent — only PipFrame intercepts clicks. -->
+    <Grid Grid.Column="1" x:Name="PipHost">
+        <Border x:Name="PipFrame"
+                Width="320" Height="180"
+                IsVisible="False"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                CornerRadius="8"
+                ClipToBounds="True"
+                BoxShadow="0 8 24 0 #99000000"
+                Background="Black"
+                Cursor="SizeAll"
+                PointerPressed="PipFrame_PointerPressed"
+                PointerMoved="PipFrame_PointerMoved"
+                PointerReleased="PipFrame_PointerReleased"
+                PointerEntered="PipFrame_PointerEntered"
+                PointerExited="PipFrame_PointerExited">
+            <Grid>
+                <!-- Mini video surface: shares the same WriteableBitmap as
+                     VideoImage, so frame updates appear here automatically. -->
+                <Image x:Name="PipImage" Stretch="Uniform"/>
+
+                <!-- PiP loading spinner — same shape + accent stroke as
+                     the full-size LoadingOverlay, scaled smaller for the
+                     mini frame. Visibility tracks _isLoading so it shows
+                     in PiP if the user dropped into mini mode while the
+                     stream was still loading. -->
+                <Grid x:Name="PipLoadingOverlay"
+                      IsHitTestVisible="False"
+                      IsVisible="False">
+                    <Viewbox Width="32" Height="32"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Grid Width="24" Height="24"
+                              x:Name="PipLoadingSpinner"
+                              RenderTransformOrigin="50%,50%">
+                            <Grid.Styles>
+                                <Style Selector="Grid#PipLoadingSpinner">
+                                    <Style.Animations>
+                                        <Animation Duration="0:0:1"
+                                                   IterationCount="INFINITE">
+                                            <KeyFrame Cue="0%">
+                                                <Setter Property="RotateTransform.Angle" Value="0"/>
+                                            </KeyFrame>
+                                            <KeyFrame Cue="100%">
+                                                <Setter Property="RotateTransform.Angle" Value="360"/>
+                                            </KeyFrame>
+                                        </Animation>
+                                    </Style.Animations>
+                                </Style>
+                            </Grid.Styles>
+                            <Grid.RenderTransform>
+                                <RotateTransform/>
+                            </Grid.RenderTransform>
+                            <Path Data="M 21 12 a 9 9 0 1 1 -6.219 -8.56"
+                                  Stroke="{DynamicResource SystemAccentColorBrush}"
+                                  StrokeThickness="2.4"
+                                  StrokeLineCap="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
+                    </Viewbox>
+                </Grid>
+
+                <!-- Top fading gradient: dark→transparent over ~60px so the
+                     restore button sits on a readable backdrop without
+                     a hard edge. Toggled with the rest of the PiP chrome. -->
+                <Border x:Name="PipTopGradient"
+                        VerticalAlignment="Top"
+                        Height="60"
+                        IsHitTestVisible="False"
+                        IsVisible="False">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                            <GradientStop Offset="0" Color="#CC000000"/>
+                            <GradientStop Offset="0.5" Color="#66000000"/>
+                            <GradientStop Offset="1" Color="#00000000"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Bottom fading gradient: transparent→dark over ~80px,
+                     paints behind the mini-transport so the controls are
+                     readable on bright frames. -->
+                <Border x:Name="PipBottomGradient"
+                        VerticalAlignment="Bottom"
+                        Height="80"
+                        IsHitTestVisible="False"
+                        IsVisible="False">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                            <GradientStop Offset="0" Color="#00000000"/>
+                            <GradientStop Offset="0.5" Color="#66000000"/>
+                            <GradientStop Offset="1" Color="#CC000000"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Top-right resize grip — placed BEFORE the close/restore
+                     StackPanel so the buttons sit on top and stay clickable.
+                     Hit-tests fall through the StackPanel's empty space
+                     (no Background) to reach the grip behind. -->
+                <Border x:Name="PipResizeGripTR"
+                        Tag="TR"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Width="22" Height="22"
+                        Background="Transparent"
+                        Cursor="TopRightCorner"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+
+                <!-- Top-right action cluster: restore (back to full size)
+                     and close (tear down playback). Same scale-on-hover
+                     behavior as the main video chrome via Classes="back". -->
+                <StackPanel HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Orientation="Horizontal"
+                            Spacing="2"
+                            Margin="0,6,6,0">
+                    <Button x:Name="PipRestoreBtn"
+                            Classes="back"
+                            Width="32" Height="32"
+                            Padding="0"
+                            Cursor="Hand"
+                            IsVisible="False"
+                            Focusable="False" IsTabStop="False"
+                            Click="PipRestore_Click">
+                        <Viewbox Width="18" Height="18">
+                            <Grid Width="24" Height="24">
+                                <!-- Lucide maximize-2 (corner-out arrows). -->
+                                <Path Data="M 15 3 H 21 V 9 M 9 21 H 3 V 15 M 21 3 L 14 10 M 3 21 L 10 14"
+                                      Stroke="White" StrokeThickness="1.8"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Fill="Transparent"/>
+                            </Grid>
+                        </Viewbox>
+                    </Button>
+                    <Button x:Name="PipCloseBtn"
+                            Classes="back"
+                            Width="32" Height="32"
+                            Padding="0"
+                            Cursor="Hand"
+                            IsVisible="False"
+                            Focusable="False" IsTabStop="False"
+                            Click="PipClose_Click">
+                        <Viewbox Width="18" Height="18">
+                            <Grid Width="24" Height="24">
+                                <!-- Lucide x. -->
+                                <Path Data="M 6 6 L 18 18 M 18 6 L 6 18"
+                                      Stroke="White" StrokeThickness="1.8"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Fill="Transparent"/>
+                            </Grid>
+                        </Viewbox>
+                    </Button>
+                </StackPanel>
+
+                <!-- Mini transport: single row — play/pause | slider | time.
+                     No solid background; the bottom gradient supplies the
+                     contrast. -->
+                <Border x:Name="PipTransport"
+                        VerticalAlignment="Bottom"
+                        Background="Transparent"
+                        Padding="6,0,10,8"
+                        IsVisible="False">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Button Grid.Column="0"
+                                x:Name="PipPlayPauseBtn"
+                                Classes="back"
+                                Click="PipPlayPause_Click"
+                                Padding="0"
+                                Width="32" Height="32"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Cursor="Hand"
+                                Focusable="False" IsTabStop="False">
+                            <Viewbox Width="18" Height="18">
+                                <Grid Width="24" Height="24">
+                                    <Path x:Name="PipPlayIcon"
+                                          Data="M 6 3 L 20 12 L 6 21 Z"
+                                          Stroke="White" StrokeThickness="2"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          Fill="Transparent"/>
+                                    <Path x:Name="PipPauseIcon"
+                                          Data="M 7 4 H 9 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 7 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z M 15 4 H 17 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 15 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z"
+                                          Stroke="White" StrokeThickness="2"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          Fill="Transparent"
+                                          IsVisible="False"/>
+                                </Grid>
+                            </Viewbox>
+                        </Button>
+                        <Slider Grid.Column="1"
+                                x:Name="PipPositionSlider"
+                                Minimum="0" Maximum="1000" Value="0"
+                                Focusable="False" IsTabStop="False"
+                                VerticalAlignment="Center"
+                                Margin="6,0,8,0">
+                            <Slider.Resources>
+                                <SolidColorBrush x:Key="SliderTrackFill" Color="#80FFFFFF"/>
+                                <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#80FFFFFF"/>
+                                <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#80FFFFFF"/>
+                                <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="#80FFFFFF"/>
+                            </Slider.Resources>
+                        </Slider>
+                        <TextBlock Grid.Column="2"
+                                   x:Name="PipDurationLabel"
+                                   Text="00:00"
+                                   Foreground="White"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <!-- Bottom + top-left resize grips — last in the Grid so
+                     they sit on top of PipTransport (which is full-width
+                     transparent and would otherwise eat the corner clicks).
+                     The TR grip lives earlier in the Grid (behind the
+                     close/restore StackPanel) so those buttons stay
+                     clickable. Each grip's Tag identifies which corner so
+                     the shared handler knows which edge stays anchored. -->
+                <Border x:Name="PipResizeGripTL"
+                        Tag="TL"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Width="22" Height="22"
+                        Background="Transparent"
+                        Cursor="TopLeftCorner"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripBL"
+                        Tag="BL"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        Width="22" Height="22"
+                        Background="Transparent"
+                        Cursor="BottomLeftCorner"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripBR"
+                        Tag="BR"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Width="22" Height="22"
+                        Background="Transparent"
+                        Cursor="BottomRightCorner"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+            </Grid>
+        </Border>
+    </Grid>
+    </Grid>
+
+    <!-- Theme picker modal overlay: spans the entire window so it sits
+         over the title bar, sidebar and main content. Click on the
+         backdrop closes; click on the card is suppressed via Handled
+         in code-behind. -->
+    <Grid x:Name="ThemePickerOverlay"
+          Grid.RowSpan="2"
+          Background="#80000000"
+          IsVisible="False"
+          PointerPressed="ThemePickerOverlay_BackdropClicked">
+        <Border x:Name="ThemePickerCard"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Width="380"
+                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="24"
+                BoxShadow="0 8 32 0 #66000000"
+                PointerPressed="ThemePickerCard_Pressed">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Themes" FontSize="22" FontWeight="Medium"
+                           Margin="0,0,0,18"/>
+
+                <!-- Pastel themes -->
+                <TextBlock Text="Pastel themes" FontSize="13" FontWeight="Medium"
+                           Margin="0,0,0,8"/>
+                <WrapPanel Margin="0,0,0,12">
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="LightLavenderThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="LightLavenderTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#9F8AE6"/>
+                            <TextBlock Text="Lavender" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="LightMintThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="LightMintTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#7DC6A6"/>
+                            <TextBlock Text="Mint" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="LightApricotThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="LightApricotTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#E8A76B"/>
+                            <TextBlock Text="Apricot" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                </WrapPanel>
+
+                <!-- Dark themes -->
+                <TextBlock Text="Dark themes" FontSize="13" FontWeight="Medium"
+                           Margin="0,4,0,8"/>
+                <WrapPanel>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="CatppuccinThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="CatppuccinTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#CBA6F7"/>
+                            <TextBlock Text="Catppuccin" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="DisneyPlusThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="DisneyPlusTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#0063E5"/>
+                            <TextBlock Text="Disney+" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="DraculaThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="DraculaTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#FF5555"/>
+                            <TextBlock Text="Dracula" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="NetflixThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="NetflixTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#E50914"/>
+                            <TextBlock Text="Netflix" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Classes="theme-pill"
+                                 x:Name="PrimeVideoThemeRadio"
+                                 GroupName="Theme"
+                                 IsCheckedChanged="PrimeVideoTheme_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Ellipse Classes="swatch" Width="18" Height="18" Fill="#00A8E1"/>
+                            <TextBlock Text="Prime Video" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
     </Grid>
     </Grid>
 </Window>
