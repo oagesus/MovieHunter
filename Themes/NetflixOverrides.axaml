@@ -36,4 +36,19 @@
     <SolidColorBrush x:Key="SystemRegionBrush" Color="#141414"/>
 
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#2F2F2F"/>
+
+    <!-- Title strip on Recently watched / My list cards: theme-tinted
+         elevated surface, ~80% opacity at rest and fully opaque on hover. -->
+    <SolidColorBrush x:Key="PosterTitleStripBrush" Color="#CC2F2F2F"/>
+    <SolidColorBrush x:Key="PosterTitleStripHoverBrush" Color="#2F2F2F"/>
+
+    <!-- Chip glyph (play / my-list) stroke at rest. White on the dark
+         theme strip; hover still flips to the theme accent. -->
+    <SolidColorBrush x:Key="PosterChipStrokeBrush" Color="White"/>
+
+    <!-- Title/Source text on the strip. Pure white (no FluentTheme
+         opacity dimming) so the title pops against the dark surface;
+         source is the same white at ~67% alpha for a subordinate look. -->
+    <SolidColorBrush x:Key="PosterTitleTextBrush" Color="White"/>
+    <SolidColorBrush x:Key="PosterSourceTextBrush" Color="#AAFFFFFF"/>
 </ResourceDictionary>

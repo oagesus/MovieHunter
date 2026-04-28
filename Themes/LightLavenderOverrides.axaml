@@ -37,4 +37,19 @@
 
     <!-- Accent-soft: tinted surface for active states (theme pills, etc.). -->
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#EFE9FB"/>
+
+    <!-- Title strip on Recently watched / My list cards: theme-tinted
+         pastel surface, ~80% opacity at rest and fully opaque on hover. -->
+    <SolidColorBrush x:Key="PosterTitleStripBrush" Color="#CCEFE9FB"/>
+    <SolidColorBrush x:Key="PosterTitleStripHoverBrush" Color="#EFE9FB"/>
+
+    <!-- Chip glyph (play / my-list) stroke at rest. Black on the light
+         pastel strip so the icons are visible; hover still flips to the
+         theme accent. -->
+    <SolidColorBrush x:Key="PosterChipStrokeBrush" Color="Black"/>
+
+    <!-- Title/Source text on the light pastel strip. Near-black title;
+         source same color at ~67% alpha. -->
+    <SolidColorBrush x:Key="PosterTitleTextBrush" Color="#1B1B1B"/>
+    <SolidColorBrush x:Key="PosterSourceTextBrush" Color="#AA1B1B1B"/>
 </ResourceDictionary>

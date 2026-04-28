@@ -27,6 +27,10 @@ public partial class RecentWatch : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Progress))]
     private long _lengthMs;
     [ObservableProperty] private DateTime _lastWatchedUtc = DateTime.UtcNow;
+    // Mirrors MyList membership so the poster chip on the recent card
+    // reflects saved-state instantly. Synced after load and on
+    // ToggleMyList_Click in the View.
+    [ObservableProperty] private bool _isInMyList;
 
     /// <summary>0.0 – 1.0 fraction watched, 0 when length is unknown.</summary>
     public double Progress => LengthMs > 0
@@ -41,6 +45,7 @@ public partial class RecentWatch : ObservableObject
         ThumbnailUrl = ThumbnailUrl,
         Year = Year,
         Duration = Duration,
+        IsInMyList = IsInMyList,
     };
 }
 

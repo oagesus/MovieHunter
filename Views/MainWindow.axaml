@@ -11,6 +11,7 @@
         x:DataType="vm:MainWindowViewModel"
         Title="MovieHunter"
         Width="1280" Height="780"
+        MinWidth="800" MinHeight="500"
         Padding="0"
         WindowDecorations="None">
 
@@ -199,6 +200,15 @@
             <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
         </Style>
         <Style Selector="Button.result-action:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <!-- Same idle / hover handling for the My-List toggle's Ellipse
+             (the plus-circle / check-circle icons use both Ellipse and
+             Path; Style only matched Path before). -->
+        <Style Selector="Button.result-action Ellipse">
+            <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Button.result-action:pointerover Ellipse">
             <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
         </Style>
 
@@ -456,9 +466,218 @@
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
+
+        <!-- v2 — My-List poster chip (top-right of poster cards).
+             Transparent background — the icon sits directly on the
+             poster, sized large enough to read against any frame. -->
+        <Style Selector="Button.poster-chip">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="999"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.poster-chip /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="999"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.poster-chip:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <!-- Glyph color lives in styles (not inline on each Path) so the
+             :pointerover override actually wins — inline values would
+             beat any style setter. PosterChipStrokeBrush is theme-defined
+             (white on dark themes, black on light pastel themes) so the
+             icons stay legible against the title-strip surface. Hover
+             still flips to the theme accent (red for Netflix, etc.). -->
+        <Style Selector="Button.poster-chip Path">
+            <Setter Property="Stroke" Value="{DynamicResource PosterChipStrokeBrush}"/>
+        </Style>
+        <Style Selector="Button.poster-chip:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <!-- Filled icons inside the chip / result-action buttons (e.g. the
+             play triangle). The default Path styles above set Stroke on
+             every Path; the .filled selector overrides Stroke to
+             Transparent and drives the same color via Fill instead, so
+             the hover-to-accent transition still works. -->
+        <Style Selector="Button.poster-chip Path.filled">
+            <Setter Property="Stroke" Value="Transparent"/>
+            <Setter Property="Fill" Value="{DynamicResource PosterChipStrokeBrush}"/>
+        </Style>
+        <Style Selector="Button.poster-chip:pointerover Path.filled">
+            <Setter Property="Fill" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <Style Selector="Button.result-action Path.filled">
+            <Setter Property="Stroke" Value="Transparent"/>
+            <Setter Property="Fill" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Button.result-action:pointerover Path.filled">
+            <Setter Property="Fill" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+
+        <!-- Hover-only action row inside the title strip on recent +
+             my-list cards. Toggling the parent StackPanel.IsVisible (not
+             each Button) means the row collapses out of layout cleanly,
+             leaving the "Currently playing" badge below it flush against
+             Source when no buttons are showing. -->
+        <Style Selector="Button.recent-card StackPanel.action-row">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="Button.recent-card:pointerover StackPanel.action-row">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+
+        <!-- Title/Source strip on the recent + my-list cards. Both
+             brushes track the active theme: PosterTitleStripBrush is the
+             theme's elevated surface at ~80% opacity (poster reads
+             through at rest); PosterTitleStripHoverBrush is fully opaque
+             (solid backdrop on hover). Each theme override file provides
+             the values — dark themes tint to their surface color; light
+             themes stay near-black so the white Title/Source text stays
+             readable. -->
+        <Style Selector="Border.title-strip">
+            <Setter Property="Background" Value="{DynamicResource PosterTitleStripBrush}"/>
+        </Style>
+        <Style Selector="Button.recent-card:pointerover Border.title-strip">
+            <Setter Property="Background" Value="{DynamicResource PosterTitleStripHoverBrush}"/>
+        </Style>
+
+        <!-- v2 — Result-row meta (Source / MetaLine). Reuses the same
+             per-theme PosterSourceTextBrush as the poster-strip source
+             line — pure white at ~67% alpha on dark themes, near-black
+             at ~67% alpha on light themes. Avoids FluentTheme's baked-in
+             opacity dimming that makes TextFillColorSecondaryBrush look
+             too dark on dark surfaces. -->
+        <Style Selector="TextBlock.result-meta">
+            <Setter Property="Foreground" Value="{DynamicResource PosterSourceTextBrush}"/>
+        </Style>
+
+        <!-- v2 — Modern slim scrollbar. We replace the FluentTheme
+             ScrollBar template entirely (vertical + horizontal) so the
+             thumb is a simple Border filled with the active theme
+             accent — FluentTheme's default Thumb template paints
+             through internal resource brushes that ignore Background
+             setters and were swallowing our accent color. -->
+        <Style Selector="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="AllowAutoHide" Value="False"/>
+        </Style>
+        <!-- Hover: brighten only the thumb (the draggable part) — the
+             unscrolled track lane stays at its faint resting opacity. -->
+        <Style Selector="ScrollBar:pointerover /template/ Thumb">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <!-- Direct thumb drag: Avalonia keeps Thumb in :pressed state
+             for the whole drag (pointer capture survives leaving the
+             bar), so this style holds the brighter look while the user
+             scrubs even far outside the scrollbar. -->
+        <Style Selector="ScrollBar /template/ Thumb:pressed">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <!-- Track-lane drag: "scrolling" class is toggled on the thumb
+             from code-behind while a lane-click drag is in progress.
+             Mirrors the :pressed behavior for thumb drags but for the
+             other entry point. -->
+        <Style Selector="Thumb.scrolling">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="ScrollBar:vertical">
+            <!-- 14 px control width gives a forgiving hit target while
+                 the lane and thumb stay slim (6 px wide, centered) via
+                 their Margin — visually unchanged, but clicks within
+                 a few pixels of the bar still register. -->
+            <Setter Property="Width" Value="14"/>
+            <Setter Property="MinWidth" Value="14"/>
+            <Setter Property="Template">
+                <ControlTemplate TargetType="ScrollBar">
+                    <!-- Outer Border applies the 4 px top/bottom inset
+                         so the rounded caps clear the panel's rounded
+                         corner clip. Done at the OUTER level (not on
+                         the Thumb) because Margin on the Thumb breaks
+                         Track's value-to-position mapping — the Track
+                         needs the Thumb to be at its natural bounds. -->
+                    <Border Padding="0,4">
+                        <!-- Pointer handlers live on the Grid (full 14 px
+                             hit area) instead of the slim 6 px lane
+                             Border. Otherwise clicks on the transparent
+                             gutter that pads the visual lane wouldn't
+                             register. The Thumb marks its own
+                             PointerPressed handled, so thumb-direct
+                             drags still go through Avalonia's native
+                             Track logic without hitting this handler. -->
+                        <Grid Background="{TemplateBinding Background}"
+                              PointerPressed="OnScrollBarTrackClick"
+                              PointerMoved="OnScrollBarTrackPointerMoved"
+                              PointerReleased="OnScrollBarTrackPointerReleased">
+                            <!-- Faint track lane that stays visible
+                                 whether or not the thumb covers it. -->
+                            <Border x:Name="TrackLane"
+                                    Margin="4,0"
+                                    Background="{DynamicResource SystemAccentColorBrush}"
+                                    CornerRadius="3"
+                                    Opacity="0.15"/>
+                            <Track Orientation="Vertical"
+                                   IsDirectionReversed="True"
+                                   Minimum="{TemplateBinding Minimum}"
+                                   Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                                   ViewportSize="{TemplateBinding ViewportSize}">
+                                <Track.Thumb>
+                                    <Thumb Margin="4,0" MinHeight="24" Opacity="0.75">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="{DynamicResource SystemAccentColorBrush}"
+                                                        CornerRadius="3"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ScrollBar:horizontal">
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="MinHeight" Value="14"/>
+            <Setter Property="Template">
+                <ControlTemplate TargetType="ScrollBar">
+                    <Border Padding="4,0">
+                        <Grid Background="{TemplateBinding Background}"
+                              PointerPressed="OnScrollBarTrackClick"
+                              PointerMoved="OnScrollBarTrackPointerMoved"
+                              PointerReleased="OnScrollBarTrackPointerReleased">
+                            <Border x:Name="TrackLane"
+                                    Margin="0,4"
+                                    Background="{DynamicResource SystemAccentColorBrush}"
+                                    CornerRadius="3"
+                                    Opacity="0.15"/>
+                            <Track Orientation="Horizontal"
+                                   Minimum="{TemplateBinding Minimum}"
+                                   Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                                   ViewportSize="{TemplateBinding ViewportSize}">
+                                <Track.Thumb>
+                                    <Thumb Margin="0,4" MinWidth="24" Opacity="0.75">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="{DynamicResource SystemAccentColorBrush}"
+                                                        CornerRadius="3"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- Custom title bar: MovieHunter name + theme picker on the left,
              our own minimize / maximize / close on the right. Background is
@@ -595,6 +814,25 @@
                         </Grid>
                     </Viewbox>
                 </Button>
+                <!-- My List nav: design-system v2 list-add glyph
+                     (plus-in-circle). Stroke comes from the Button's
+                     Foreground via Path Stroke binding, so the .nav.active
+                     style flips it to the accent. -->
+                <Button Classes="nav"
+                        x:Name="NavMyListBtn"
+                        Click="NavMyList_Click"
+                        ToolTip.Tip="My list">
+                    <Viewbox Width="20" Height="20">
+                        <Grid Width="24" Height="24">
+                            <!-- Saved-state check (same glyph as the
+                                 "in My list" chip on poster cards). -->
+                            <Path Data="M 4 12.5 L 9 17.5 L 20 6.5"
+                                  StrokeThickness="1.8"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
+                    </Viewbox>
+                </Button>
                 <Button Classes="nav"
                         x:Name="SettingsBtn"
                         Click="NavSettings_Click"
@@ -612,7 +850,7 @@
             </StackPanel>
         </Border>
 
-    <Grid Grid.Column="1" x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="12">
+    <Grid Grid.Column="1" x:Name="RootGrid" RowDefinitions="Auto,*" Margin="12">
 
         <Grid x:Name="SearchBar" Grid.Row="0" ColumnDefinitions="*,110,Auto">
             <TextBox Grid.Column="0" x:Name="TitleBox" Classes="search-input"
@@ -655,7 +893,7 @@
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="12"
-                    Padding="6"
+                    Padding="6,12,6,12"
                     ClipToBounds="True"
                     BoxShadow="0 4 16 0 #11281E50">
                 <Grid>
@@ -664,6 +902,7 @@
                              SelectedItem="{Binding SelectedResult}"
                              Background="Transparent"
                              BorderThickness="0"
+                             Padding="0,0,16,0"
                              KeyboardNavigation.TabNavigation="Continue">
                     <ListBox.Styles>
                         <!-- Tab should skip the row itself and go directly
@@ -699,11 +938,11 @@
                                                FontSize="14"
                                                TextWrapping="Wrap"/>
                                     <TextBlock Text="{Binding Source}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                               Classes="result-meta"
+                                               FontSize="11"/>
                                     <TextBlock Text="{Binding MetaLine}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                               Classes="result-meta"
+                                               FontSize="11"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal"
                                             Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
@@ -716,12 +955,46 @@
                                             VerticalContentAlignment="Center">
                                         <Viewbox Width="22" Height="22">
                                             <Grid Width="24" Height="24">
-                                                <Path Data="M 6 3 L 20 12 L 6 21 Z"
-                                                      StrokeThickness="2"
-                                                      StrokeLineCap="Round" StrokeJoin="Round"
-                                                      Fill="Transparent"/>
+                                                <Path Classes="filled"
+                                                      Data="M 7.5 4.21 C 6.83 3.79 6 4.27 6 5.06 v 13.88 c 0 0.79 0.83 1.27 1.5 0.85 l 11 -6.94 c 0.67 -0.42 0.67 -1.28 0 -1.7 l -11 -6.94 z"/>
                                             </Grid>
                                         </Viewbox>
+                                    </Button>
+                                    <!-- v2 — Add to / remove from My List.
+                                         Same toggle as the poster chip; the
+                                         result-action class handles idle /
+                                         hover stroke styling for both Path
+                                         and Ellipse. The saved-state inner
+                                         glyphs use inline accent stroke so
+                                         "saved" reads even without hover. -->
+                                    <Button Classes="result-action"
+                                            Tag="{Binding}"
+                                            Click="ToggleMyList_Click"
+                                            ToolTip.Tip="Add to My List"
+                                            Width="40" Height="40" Padding="0"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center">
+                                        <Grid>
+                                            <Viewbox Width="22" Height="22"
+                                                     IsVisible="{Binding !IsInMyList}">
+                                                <Grid Width="24" Height="24">
+                                                    <Path Data="M 12 4 V 20 M 4 12 H 20"
+                                                          StrokeThickness="2"
+                                                          StrokeLineCap="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
+                                            </Viewbox>
+                                            <Viewbox Width="22" Height="22"
+                                                     IsVisible="{Binding IsInMyList}">
+                                                <Grid Width="24" Height="24">
+                                                    <Path Data="M 4 12.5 L 9 17.5 L 20 6.5"
+                                                          Stroke="{DynamicResource SystemAccentColorBrush}"
+                                                          StrokeThickness="2"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
+                                            </Viewbox>
+                                        </Grid>
                                     </Button>
                                     <Button Classes="result-action"
                                             Tag="{Binding}"
@@ -838,7 +1111,16 @@
                                       x:Name="LoadingSpinner"
                                       RenderTransformOrigin="50%,50%">
                                     <Grid.Styles>
-                                        <Style Selector="Grid#LoadingSpinner">
+                                        <!-- Animation only runs when the
+                                             ".spinning" class is present.
+                                             Avalonia's INFINITE animations
+                                             keep invalidating their target
+                                             even when the parent is
+                                             IsVisible=False, which can leak
+                                             phantom rendering — gating on a
+                                             class detaches the animation
+                                             entirely while not loading. -->
+                                        <Style Selector="Grid#LoadingSpinner.spinning">
                                             <Style.Animations>
                                                 <Animation Duration="0:0:1"
                                                            IterationCount="INFINITE">
@@ -995,21 +1277,20 @@
                                             Click="PlayPause_Click"
                                             Focusable="False" IsTabStop="False">
                                         <Border Classes="transport-icon">
-                                            <Viewbox Width="30" Height="30">
+                                            <Viewbox Width="26" Height="26">
                                                 <Grid Width="24" Height="24">
-                                                    <!-- Lucide play — stroke-only triangle. -->
+                                                    <!-- Lucide play — solid filled triangle. Path's
+                                                         absolute Y values nudged up by 1 grid unit so
+                                                         the wide left edge feels visually centered
+                                                         alongside the smaller transport icons. -->
                                                     <Path x:Name="PlayIcon"
-                                                          Data="M 6 3 L 20 12 L 6 21 Z"
-                                                          Stroke="White" StrokeThickness="2"
-                                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                                          Fill="Transparent"/>
-                                                    <!-- Lucide pause — two stroke-only rounded rects
+                                                          Data="M 7.5 3.21 C 6.83 2.79 6 3.27 6 4.06 v 13.88 c 0 0.79 0.83 1.27 1.5 0.85 l 11 -6.94 c 0.67 -0.42 0.67 -1.28 0 -1.7 l -11 -6.94 z"
+                                                          Fill="White"/>
+                                                    <!-- Lucide pause — two solid filled rounded rects
                                                          (rx=1). Drawn as one Path with two subpaths. -->
                                                     <Path x:Name="PauseIcon"
-                                                          Data="M 7 4 H 9 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 7 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z M 15 4 H 17 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 15 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z"
-                                                          Stroke="White" StrokeThickness="2"
-                                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                                          Fill="Transparent"
+                                                          Data="M 8 3 a 2 2 0 0 1 2 2 V 17 a 2 2 0 0 1 -2 2 a 2 2 0 0 1 -2 -2 V 5 a 2 2 0 0 1 2 -2 z M 16 3 a 2 2 0 0 1 2 2 V 17 a 2 2 0 0 1 -2 2 a 2 2 0 0 1 -2 -2 V 5 a 2 2 0 0 1 2 -2 z"
+                                                          Fill="White"
                                                           IsVisible="False"/>
                                                 </Grid>
                                             </Viewbox>
@@ -1097,27 +1378,56 @@
                                             </StackPanel>
                                         </Border>
                                     </Popup>
-                                    <!-- Picture-in-picture toggle: grouped
-                                         with the fullscreen button per
-                                         standard video-player conventions
-                                         (YouTube / Netflix / browser-native
-                                         all sit PiP next to fullscreen). -->
-                                    <Button Grid.Column="5" x:Name="PipButton"
-                                            Classes="transport"
-                                            Focusable="False" IsTabStop="False"
-                                            Click="EnterPip_Click">
+                                    <!-- v2 — Picture-in-picture ToggleButton.
+                                         Grouped with fullscreen per standard
+                                         video-player conventions; swaps glyphs
+                                         via {Binding IsPipActive} so it shows
+                                         "Enter PiP" outside PiP and "Exit PiP"
+                                         once the mini-player is up. -->
+                                    <ToggleButton Grid.Column="5" x:Name="PipButton"
+                                                  Classes="transport"
+                                                  Focusable="False" IsTabStop="False"
+                                                  Click="TogglePip_Click">
                                         <Border Classes="transport-icon">
-                                            <Viewbox Width="26" Height="26">
-                                                <Grid Width="24" Height="24">
-                                                    <!-- Lucide picture-in-picture-2. -->
-                                                    <Path Data="M 21 9 V 6 a 2 2 0 0 0 -2 -2 H 5 a 2 2 0 0 0 -2 2 v 12 a 2 2 0 0 0 2 2 h 6 M 21 13 a 1 1 0 0 0 -1 -1 H 13 a 1 1 0 0 0 -1 1 v 6 a 1 1 0 0 0 1 1 h 7 a 1 1 0 0 0 1 -1 z"
-                                                          Stroke="White" StrokeThickness="1.8"
-                                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                                          Fill="Transparent"/>
-                                                </Grid>
-                                            </Viewbox>
+                                            <Grid>
+                                                <!-- Enter PiP — Bootstrap "bi-pip" silhouette: rounded
+                                                     screen frame with a filled block in the bottom-right.
+                                                     Outer 22×18 — same vertical extent as fullscreen
+                                                     (y=3..21) so the icon weight matches its neighbour;
+                                                     1.8 stroke same as other transport icons. Inner
+                                                     block sized in Bootstrap's 37%/33% proportion with
+                                                     ~2 px clearance from the inside of the stroke. -->
+                                                <Viewbox Width="26" Height="26"
+                                                         IsVisible="{Binding !IsPipActive}">
+                                                    <Grid Width="24" Height="24">
+                                                        <Rectangle Width="22" Height="18" Margin="1,3,1,3"
+                                                                   RadiusX="2" RadiusY="2"
+                                                                   Stroke="White" StrokeThickness="1.8"
+                                                                   Fill="Transparent"/>
+                                                        <Rectangle Width="8" Height="6" Margin="12,12,4,6"
+                                                                   RadiusX="1" RadiusY="1"
+                                                                   Fill="White"/>
+                                                    </Grid>
+                                                </Viewbox>
+                                                <!-- Exit PiP: same enlarged outer screen + arrow pointing
+                                                     into it from the bottom-right. Arrow geometry shifted
+                                                     to match the new 22×18 frame. -->
+                                                <Viewbox Width="26" Height="26"
+                                                         IsVisible="{Binding IsPipActive}">
+                                                    <Grid Width="24" Height="24">
+                                                        <Rectangle Width="22" Height="18" Margin="1,3,1,3"
+                                                                   RadiusX="2" RadiusY="2"
+                                                                   Stroke="White" StrokeThickness="1.8"
+                                                                   Fill="Transparent"/>
+                                                        <Path Data="M 21 18 L 16 13 M 16 18 H 21 V 13"
+                                                              Stroke="White" StrokeThickness="1.8"
+                                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                                              Fill="Transparent"/>
+                                                    </Grid>
+                                                </Viewbox>
+                                            </Grid>
                                         </Border>
-                                    </Button>
+                                    </ToggleButton>
                                     <Button Grid.Column="6" Classes="transport"
                                             Focusable="False" IsTabStop="False"
                                             Click="Fullscreen_Click">
@@ -1151,17 +1461,17 @@
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="12"
+                Padding="6,12,6,12"
                 BoxShadow="0 4 16 0 #11281E50"
                 ClipToBounds="True">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="28,24">
-                <StackPanel>
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="22,18,22,18">
                     <TextBlock Text="Recently watched"
                                FontSize="22" FontWeight="Medium"
                                Margin="0,0,0,28"/>
                     <TextBlock x:Name="RecentEmptyLabel"
-                               Text="Search for a movie and play one — it'll show up here next time."
+                               Text="Movies you have recently watched will show up here."
                                Opacity="0.7"
                                FontSize="13"
                                Margin="0,0,0,4"/>
@@ -1186,53 +1496,264 @@
                                             <Border Background="#33000000"
                                                     CornerRadius="12"
                                                     ClipToBounds="True"
-                                                    BoxShadow="0 4 16 0 #11281E50">
-                                                <Panel>
-                                                    <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
-                                                           Stretch="UniformToFill"/>
-                                                    <Border VerticalAlignment="Bottom"
-                                                            Background="#CC000000"
-                                                            Padding="6,4">
-                                                        <StackPanel>
-                                                            <TextBlock Text="{Binding Title}"
-                                                                       Foreground="White"
-                                                                       FontSize="12"
-                                                                       FontWeight="SemiBold"
-                                                                       TextWrapping="Wrap"/>
-                                                            <TextBlock Text="{Binding Source}"
-                                                                       Foreground="#AAFFFFFF"
-                                                                       FontSize="10"
-                                                                       TextWrapping="Wrap"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </Panel>
+                                                    BoxShadow="0 4 16 0 #11281E50"
+                                                    Cursor="Hand">
+                                                <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
+                                                       Stretch="UniformToFill"/>
                                             </Border>
-                                            <Border Classes="resume"
+                                            <!-- Currently-playing scrim — darkens the
+                                                 poster image (above) when this card matches
+                                                 the active playback URL. ApplyRecentCardVisuals
+                                                 toggles IsVisible. The title strip is drawn
+                                                 after this Border, so the scrim doesn't sit
+                                                 over the inline action chips. -->
+                                            <Border Classes="playing-scrim"
                                                     CornerRadius="12"
                                                     Background="#80000000"
                                                     IsHitTestVisible="False"
-                                                    IsVisible="False">
-                                                <StackPanel HorizontalAlignment="Center"
-                                                            VerticalAlignment="Center"
-                                                            Spacing="6">
-                                                    <Viewbox Width="36" Height="36"
-                                                             HorizontalAlignment="Center">
-                                                        <Grid Width="24" Height="24">
-                                                            <!-- Lucide play — stroke-only triangle. -->
-                                                            <Path Data="M 6 3 L 20 12 L 6 21 Z"
-                                                                  Stroke="White" StrokeThickness="2"
-                                                                  StrokeLineCap="Round"
-                                                                  StrokeJoin="Round"
-                                                                  Fill="Transparent"/>
-                                                        </Grid>
-                                                    </Viewbox>
-                                                    <TextBlock Text="Resume"
-                                                               Foreground="White"
-                                                               FontSize="13"
-                                                               FontWeight="Medium"
-                                                               HorizontalAlignment="Center"/>
+                                                    IsVisible="False"/>
+                                            <!-- Title/Source strip. Sits on top of the
+                                                 image (sibling Border, drawn last) so the
+                                                 play + watch-later chips inside it stay
+                                                 visible. Goes fully opaque on hover via
+                                                 the title-strip class style. -->
+                                            <Border Classes="title-strip"
+                                                    VerticalAlignment="Bottom"
+                                                    CornerRadius="0,0,12,12"
+                                                    Padding="6,4"
+                                                    Cursor="Arrow"
+                                                    PointerPressed="TitleStrip_PointerPressed">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="{Binding Title}"
+                                                               Foreground="{DynamicResource PosterTitleTextBrush}"
+                                                               FontSize="12"
+                                                               FontWeight="SemiBold"
+                                                               TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Source}"
+                                                               Foreground="{DynamicResource PosterSourceTextBrush}"
+                                                               FontSize="10"
+                                                               TextWrapping="Wrap"/>
+                                                    <!-- Action pair: play (left) + watch-later
+                                                         (right). Wrapped in a StackPanel.action-row
+                                                         so the row toggles IsVisible as a unit on
+                                                         hover; centers the pair. -->
+                                                    <StackPanel Classes="action-row"
+                                                                Orientation="Horizontal"
+                                                                HorizontalAlignment="Center"
+                                                                Spacing="6">
+                                                        <Button Classes="poster-chip"
+                                                                Tag="{Binding}"
+                                                                Click="RecentWatch_Click"
+                                                                Width="32" Height="32"
+                                                                Padding="0">
+                                                            <Viewbox Width="22" Height="22">
+                                                                <Grid Width="24" Height="24">
+                                                                    <Path Classes="filled"
+                                                                          Data="M 7.5 4.21 C 6.83 3.79 6 4.27 6 5.06 v 13.88 c 0 0.79 0.83 1.27 1.5 0.85 l 11 -6.94 c 0.67 -0.42 0.67 -1.28 0 -1.7 l -11 -6.94 z"/>
+                                                                </Grid>
+                                                            </Viewbox>
+                                                        </Button>
+                                                        <Button Classes="poster-chip"
+                                                                Tag="{Binding}"
+                                                                Click="ToggleMyList_Click"
+                                                                Width="32" Height="32"
+                                                                Padding="0">
+                                                            <Grid>
+                                                                <Viewbox Width="26" Height="26"
+                                                                         IsVisible="{Binding !IsInMyList}">
+                                                                    <Grid Width="24" Height="24">
+                                                                        <Path Data="M 12 4 V 20 M 4 12 H 20"
+                                                                              StrokeThickness="2"
+                                                                              StrokeLineCap="Round"
+                                                                              Fill="Transparent"/>
+                                                                    </Grid>
+                                                                </Viewbox>
+                                                                <Viewbox Width="26" Height="26"
+                                                                         IsVisible="{Binding IsInMyList}">
+                                                                    <Grid Width="24" Height="24">
+                                                                        <Path Data="M 4 12.5 L 9 17.5 L 20 6.5"
+                                                                              StrokeThickness="2"
+                                                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                                                              Fill="Transparent"/>
+                                                                    </Grid>
+                                                                </Viewbox>
+                                                            </Grid>
+                                                        </Button>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Border>
+                                            <!-- "Currently playing" badge — sibling of the
+                                                 title strip (drawn after, so it sits on top
+                                                 of the playing-scrim). Centered in the card
+                                                 and large enough to read at a glance. Hidden
+                                                 by default; ApplyRecentCardVisuals toggles
+                                                 IsVisible. -->
+                                            <!-- "Currently playing" badge — centered in the
+                                                 top third of the card. ApplyRecentCardVisuals
+                                                 toggles IsVisible. Non-interactive. -->
+                                            <TextBlock Classes="playing-badge"
+                                                       Text="Currently playing"
+                                                       IsVisible="False"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Top"
+                                                       Margin="0,52,0,0"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#CCFFFFFF"
+                                                       TextAlignment="Center"
+                                                       IsHitTestVisible="False"/>
+                                            <Border Classes="poster"
+                                                    CornerRadius="12"
+                                                    BorderThickness="2"
+                                                    BorderBrush="Transparent"
+                                                    IsHitTestVisible="False"/>
+                                        </Grid>
+                                        <Border Margin="0,4,0,0"
+                                                CornerRadius="2"
+                                                ClipToBounds="True">
+                                            <ProgressBar Classes="recent-progress"
+                                                         Value="{Binding Progress, Mode=OneWay}"
+                                                         Maximum="1"
+                                                         Height="3"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- My-list view: same card shell as Recently watched, items
+             come from MyList.Items. The poster chip on each card lets
+             the user remove an entry inline. Hidden by default. -->
+        <Border Grid.Row="1" x:Name="MyListPanel"
+                IsVisible="False"
+                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="6,12,6,12"
+                BoxShadow="0 4 16 0 #11281E50"
+                ClipToBounds="True">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="22,18,22,18">
+                    <TextBlock Text="My list"
+                               FontSize="22" FontWeight="Medium"
+                               Margin="0,0,0,28"/>
+                    <TextBlock x:Name="MyListEmptyLabel"
+                               Text="Movies added to your list will show up here."
+                               Opacity="0.7"
+                               FontSize="13"
+                               Margin="0,0,0,4"/>
+                    <ItemsControl ItemsSource="{Binding MyList.Items}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="services:MyListEntry">
+                                <Button Tag="{Binding}"
+                                        Classes="recent-card"
+                                        Click="MyListEntry_Click"
+                                        PointerEntered="RecentCard_PointerEntered"
+                                        PointerExited="RecentCard_PointerExited"
+                                        Width="140" Margin="0,0,10,10"
+                                        Padding="0"
+                                        Background="Transparent">
+                                    <StackPanel>
+                                        <Grid Width="140" Height="210">
+                                            <Border Background="#33000000"
+                                                    CornerRadius="12"
+                                                    ClipToBounds="True"
+                                                    BoxShadow="0 4 16 0 #11281E50"
+                                                    Cursor="Hand">
+                                                <Image asyncImage:ImageLoader.Source="{Binding ThumbnailUrl}"
+                                                       Stretch="UniformToFill"/>
+                                            </Border>
+                                            <!-- Currently-playing scrim. Mirrors Recently
+                                                 watched. -->
+                                            <Border Classes="playing-scrim"
+                                                    CornerRadius="12"
+                                                    Background="#80000000"
+                                                    IsHitTestVisible="False"
+                                                    IsVisible="False"/>
+                                            <!-- Title/Source strip — sibling of the image
+                                                 Border, drawn last so the play + watch-later
+                                                 chips inside it stay visible. Goes fully
+                                                 opaque on hover via the title-strip class. -->
+                                            <Border Classes="title-strip"
+                                                    VerticalAlignment="Bottom"
+                                                    CornerRadius="0,0,12,12"
+                                                    Padding="6,4"
+                                                    Cursor="Arrow"
+                                                    PointerPressed="TitleStrip_PointerPressed">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="{Binding Title}"
+                                                               Foreground="{DynamicResource PosterTitleTextBrush}"
+                                                               FontSize="12"
+                                                               FontWeight="SemiBold"
+                                                               TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Source}"
+                                                               Foreground="{DynamicResource PosterSourceTextBrush}"
+                                                               FontSize="10"
+                                                               TextWrapping="Wrap"/>
+                                                    <!-- Action pair: play (left) + remove
+                                                         (right, white check). Wrapped in a
+                                                         StackPanel.action-row that toggles as
+                                                         a unit on hover; centered. -->
+                                                    <StackPanel Classes="action-row"
+                                                                Orientation="Horizontal"
+                                                                HorizontalAlignment="Center"
+                                                                Spacing="6">
+                                                        <Button Classes="poster-chip"
+                                                                Tag="{Binding}"
+                                                                Click="MyListEntry_Click"
+                                                                Width="32" Height="32"
+                                                                Padding="0">
+                                                            <Viewbox Width="22" Height="22">
+                                                                <Grid Width="24" Height="24">
+                                                                    <Path Classes="filled"
+                                                                          Data="M 7.5 4.21 C 6.83 3.79 6 4.27 6 5.06 v 13.88 c 0 0.79 0.83 1.27 1.5 0.85 l 11 -6.94 c 0.67 -0.42 0.67 -1.28 0 -1.7 l -11 -6.94 z"/>
+                                                                </Grid>
+                                                            </Viewbox>
+                                                        </Button>
+                                                        <Button Classes="poster-chip"
+                                                                Tag="{Binding}"
+                                                                Click="MyListRemove_Click"
+                                                                Width="32" Height="32"
+                                                                Padding="0">
+                                                            <Viewbox Width="26" Height="26">
+                                                                <Grid Width="24" Height="24">
+                                                                    <Path Data="M 4 12.5 L 9 17.5 L 20 6.5"
+                                                                          StrokeThickness="2"
+                                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                                          Fill="Transparent"/>
+                                                                </Grid>
+                                                            </Viewbox>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                            <!-- "Currently playing" badge — sibling of the
+                                                 title strip; mirrors Recently watched. -->
+                                            <!-- "Currently playing" badge — centered in the
+                                                 top third of the card. ApplyRecentCardVisuals
+                                                 toggles IsVisible. Non-interactive. -->
+                                            <TextBlock Classes="playing-badge"
+                                                       Text="Currently playing"
+                                                       IsVisible="False"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Top"
+                                                       Margin="0,52,0,0"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#CCFFFFFF"
+                                                       TextAlignment="Center"
+                                                       IsHitTestVisible="False"/>
                                             <Border Classes="poster"
                                                     CornerRadius="12"
                                                     BorderThickness="2"
@@ -1259,19 +1780,24 @@
         <!-- Settings view: embedded panel that replaces ContentGrid in
              the main area when the sidebar Settings button is clicked.
              Same content as the previous Sources flyout, just inline. -->
-        <ScrollViewer Grid.Row="1" x:Name="SettingsPanel"
-                      IsVisible="False"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-            <Border Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12"
-                    Padding="28,24"
-                    BoxShadow="0 4 16 0 #11281E50"
-                    PointerPressed="SettingsBackground_PointerPressed">
+        <!-- Settings card: Border-wraps-ScrollViewer (matches the
+             Recently watched / My list pattern) so the scrollbar lives
+             inside the rounded card and inherits its 6-px right gutter. -->
+        <Border Grid.Row="1" x:Name="SettingsPanel"
+                IsVisible="False"
+                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="6,12,6,12"
+                BoxShadow="0 4 16 0 #11281E50"
+                ClipToBounds="True"
+                PointerPressed="SettingsBackground_PointerPressed">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
                 <StackPanel x:Name="SourcesFlyoutPanel"
                             Spacing="0"
+                            Margin="22,18,22,18"
                             Focusable="True">
                     <!-- Header (title + subtitle), constrained width. -->
                     <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6">
@@ -1492,11 +2018,9 @@
                                IsVisible="{Binding Sources.TmdbEnabled}"
                                Margin="0,8,0,0"/>
                 </StackPanel>
-            </Border>
-        </ScrollViewer>
+            </ScrollViewer>
+        </Border>
 
-        <TextBlock x:Name="StatusText" Grid.Row="2" Text="{Binding Status}"
-                   Margin="0,8,0,0" Opacity="0.85"/>
     </Grid>
 
     <!-- Picture-in-picture overlay: a floating mini-player that hosts the
@@ -1540,7 +2064,7 @@
                               x:Name="PipLoadingSpinner"
                               RenderTransformOrigin="50%,50%">
                             <Grid.Styles>
-                                <Style Selector="Grid#PipLoadingSpinner">
+                                <Style Selector="Grid#PipLoadingSpinner.spinning">
                                     <Style.Animations>
                                         <Animation Duration="0:0:1"
                                                    IterationCount="INFINITE">
@@ -1600,10 +2124,15 @@
                     </Border.Background>
                 </Border>
 
-                <!-- Top-right resize grip — placed BEFORE the close/restore
-                     StackPanel so the buttons sit on top and stay clickable.
-                     Hit-tests fall through the StackPanel's empty space
-                     (no Background) to reach the grip behind. -->
+                <!-- Resize grips — corners (TR/TL/BL/BR) and edges (T/B/L/R).
+                     Placed BEFORE the close/restore StackPanel and the
+                     PipTransport so those interactive surfaces sit on top
+                     and remain clickable; the corners take 22 px out of
+                     each end of the edge grips so they don't fight for
+                     hit-tests at the corners. Corner drags resize both
+                     axes (free aspect / stretch); edge drags resize only
+                     the dragged axis so the user can squash or stretch
+                     the PiP frame independently. -->
                 <Border x:Name="PipResizeGripTR"
                         Tag="TR"
                         HorizontalAlignment="Right"
@@ -1611,6 +2140,50 @@
                         Width="22" Height="22"
                         Background="Transparent"
                         Cursor="TopRightCorner"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripT"
+                        Tag="T"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Top"
+                        Height="6" Margin="22,0,22,0"
+                        Background="Transparent"
+                        Cursor="SizeNorthSouth"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripB"
+                        Tag="B"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Bottom"
+                        Height="6" Margin="22,0,22,0"
+                        Background="Transparent"
+                        Cursor="SizeNorthSouth"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripL"
+                        Tag="L"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Stretch"
+                        Width="6" Margin="0,22,0,22"
+                        Background="Transparent"
+                        Cursor="SizeWestEast"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripR"
+                        Tag="R"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Stretch"
+                        Width="6" Margin="0,22,0,22"
+                        Background="Transparent"
+                        Cursor="SizeWestEast"
                         IsVisible="False"
                         PointerPressed="PipResizeGrip_PointerPressed"
                         PointerMoved="PipResizeGrip_PointerMoved"
@@ -1684,15 +2257,11 @@
                             <Viewbox Width="18" Height="18">
                                 <Grid Width="24" Height="24">
                                     <Path x:Name="PipPlayIcon"
-                                          Data="M 6 3 L 20 12 L 6 21 Z"
-                                          Stroke="White" StrokeThickness="2"
-                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                          Fill="Transparent"/>
+                                          Data="M 7.5 4.21 C 6.83 3.79 6 4.27 6 5.06 v 13.88 c 0 0.79 0.83 1.27 1.5 0.85 l 11 -6.94 c 0.67 -0.42 0.67 -1.28 0 -1.7 l -11 -6.94 z"
+                                          Fill="White"/>
                                     <Path x:Name="PipPauseIcon"
-                                          Data="M 7 4 H 9 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 7 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z M 15 4 H 17 a 1 1 0 0 1 1 1 V 19 a 1 1 0 0 1 -1 1 H 15 a 1 1 0 0 1 -1 -1 V 5 a 1 1 0 0 1 1 -1 z"
-                                          Stroke="White" StrokeThickness="2"
-                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                          Fill="Transparent"
+                                          Data="M 8 4 a 2 2 0 0 1 2 2 V 18 a 2 2 0 0 1 -2 2 a 2 2 0 0 1 -2 -2 V 6 a 2 2 0 0 1 2 -2 z M 16 4 a 2 2 0 0 1 2 2 V 18 a 2 2 0 0 1 -2 2 a 2 2 0 0 1 -2 -2 V 6 a 2 2 0 0 1 2 -2 z"
+                                          Fill="White"
                                           IsVisible="False"/>
                                 </Grid>
                             </Viewbox>
@@ -1764,12 +2333,27 @@
     </Grid>
     </Grid>
 
+    <!-- Status footer — full-width band at the bottom of the window.
+         Same brush as the sidebar so they read as one unified surface
+         (no top hairline; the column-bg color shift above the footer is
+         enough of a separator and removing the line keeps the sidebar
+         visually flowing into the footer with no seam on the left).
+         Indented 76 px on the left so the text lines up with the
+         content panels (64 sidebar + 12 RootGrid margin). -->
+    <Border Grid.Row="2" x:Name="StatusFooter"
+            Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"
+            Padding="76,10,12,10">
+        <TextBlock x:Name="StatusText"
+                   Text="{Binding Status}"
+                   Opacity="0.85"/>
+    </Border>
+
     <!-- Theme picker modal overlay: spans the entire window so it sits
          over the title bar, sidebar and main content. Click on the
          backdrop closes; click on the card is suppressed via Handled
          in code-behind. -->
     <Grid x:Name="ThemePickerOverlay"
-          Grid.RowSpan="2"
+          Grid.RowSpan="3"
           Background="#80000000"
           IsVisible="False"
           PointerPressed="ThemePickerOverlay_BackdropClicked">

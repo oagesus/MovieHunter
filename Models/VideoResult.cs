@@ -1,8 +1,9 @@
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace MovieHunter.Models;
 
-public class VideoResult
+public partial class VideoResult : ObservableObject
 {
     public string Title { get; init; } = "";
     public string Source { get; init; } = "";
@@ -18,6 +19,10 @@ public class VideoResult
     public int? TmdbId { get; init; }
     public string? ImdbId { get; init; }
     public double? Rating { get; init; }
+
+    // Mutable runtime state — set by the My-List sync after load and by
+    // ToggleMyList_Click. Notifies so the poster chip flips state in place.
+    [ObservableProperty] private bool _isInMyList;
 
     /// <summary>
     /// Year / Language / Duration joined by "·" for display, omitting any

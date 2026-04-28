@@ -33,7 +33,7 @@ public partial class MainWindow : Window
     // OnPlayRequested actually sets _currentVideoResult.
     private string? _pendingPlayingPageUrl;
     // Which view the user was on when playback started — Back_Click restores it.
-    private enum AppView { Search, RecentlyWatched, Settings }
+    private enum AppView { Search, RecentlyWatched, MyList, Settings }
     private AppView _originView = AppView.Search;
     // Currently-active sidebar tab. Tracks where the user is so PiP restore
     // can return playback to the right place.
@@ -112,6 +112,12 @@ public partial class MainWindow : Window
         PositionSlider.IsEnabled = false;
         PipPositionSlider.ValueChanged += OnPositionSliderChanged;
         PipPositionSlider.IsEnabled = false;
+
+        // Track window resizes so the floating PiP frame keeps its
+        // distance from the bottom-right edge instead of staying glued
+        // to its old top-left coordinate (which clipped on shrink and
+        // drifted away from the corner on grow).
+        PipHost.SizeChanged += OnPipHostSizeChanged;
 
         // Highlight the initial sidebar tab (Search by default).
         UpdateActiveNavTab();
@@ -290,6 +296,7 @@ public partial class MainWindow : Window
             {
                 var len = _player.Length;
                 vm.Recent.UpdatePositionAndSave(_currentVideoResult, len > 0 ? len : 0, len);
+                vm.MyList.UpdatePositionAndSave(_currentVideoResult, len > 0 ? len : 0, len);
             }
         });
         _player.Stopped    += (_, _) => UI(() =>
@@ -351,6 +358,7 @@ public partial class MainWindow : Window
                     && DataContext is MainWindowViewModel vm)
                 {
                     vm.Recent.UpdatePositionInMemory(_currentVideoResult, e.Time, length);
+                    vm.MyList.UpdatePositionInMemory(_currentVideoResult, e.Time, length);
                 }
             }
             else
@@ -410,6 +418,24 @@ public partial class MainWindow : Window
     {
         if (_isSliderUpdatingFromPlayer) return;
 
+        // Mirror the dragged value to the other transport's slider so
+        // both stay in sync. During playback VLC's TimeChanged drives
+        // SetSliderFromPlayer which already keeps them aligned; during
+        // pause TimeChanged is silent, so without this a seek on one
+        // slider would leave the other showing the old position until
+        // playback resumes. The flag suppresses re-entry from the other
+        // slider's ValueChanged.
+        _isSliderUpdatingFromPlayer = true;
+        if (ReferenceEquals(sender, PositionSlider))
+        {
+            if (PipPositionSlider is not null) PipPositionSlider.Value = e.NewValue;
+        }
+        else if (ReferenceEquals(sender, PipPositionSlider))
+        {
+            PositionSlider.Value = e.NewValue;
+        }
+        _isSliderUpdatingFromPlayer = false;
+
         var fraction = e.NewValue / 1000.0;
 
         // After end-of-stream the player is in Ended / Stopped state and
@@ -441,6 +467,7 @@ public partial class MainWindow : Window
         if (_currentVideoResult is not null && DataContext is MainWindowViewModel vm)
         {
             vm.Recent.UpdatePositionInMemory(_currentVideoResult, newTimeMs, _player.Length);
+            vm.MyList.UpdatePositionInMemory(_currentVideoResult, newTimeMs, _player.Length);
         }
     }
 
@@ -477,7 +504,24 @@ public partial class MainWindow : Window
             void RefreshSearchEmpty() =>
                 SearchResultsEmptyLabel.IsVisible = vm.Results.Count == 0;
             RefreshSearchEmpty();
-            vm.Results.CollectionChanged += (_, _) => RefreshSearchEmpty();
+            vm.Results.CollectionChanged += (_, _) =>
+            {
+                RefreshSearchEmpty();
+                // New search results need their saved-state populated
+                // from MyList so the chip renders the right glyph.
+                RefreshAllIsInMyListFromMyList();
+            };
+
+            // Sync poster-chip state once on load and again whenever the
+            // saved list changes (so chips on Recent / Search update
+            // even if they're not the surface that triggered the toggle).
+            RefreshAllIsInMyListFromMyList();
+            vm.MyList.Items.CollectionChanged += (_, _) =>
+            {
+                RefreshAllIsInMyListFromMyList();
+                if (MyListEmptyLabel is not null)
+                    MyListEmptyLabel.IsVisible = vm.MyList.Items.Count == 0;
+            };
 
             switch (vm.Sources.Theme)
             {
@@ -531,6 +575,7 @@ public partial class MainWindow : Window
             // in that tab, not jump to Search.
             _originView = RecentlyWatchedPanel.IsVisible
                 ? AppView.RecentlyWatched
+                : MyListPanel.IsVisible ? AppView.MyList
                 : SettingsPanel.IsVisible ? AppView.Settings : AppView.Search;
             _activeTab = _originView;
             // Starting fresh playback — make sure any previous PiP overlay
@@ -908,14 +953,7 @@ public partial class MainWindow : Window
             // If the user clicked the card for the movie that's already
             // playing (in PiP mode while they're browsing Recently watched),
             // don't restart it — just bring the video back to full size.
-            if (_isPipMode
-                && _currentVideoResult is not null
-                && !string.IsNullOrEmpty(rw.PageUrl)
-                && _currentVideoResult.PageUrl == rw.PageUrl)
-            {
-                PipRestore_Click(sender, e);
-                return;
-            }
+            if (TryRestorePipForPageUrl(rw.PageUrl, sender, e)) return;
             // Optimistic highlight: light up the clicked card with
             // "Currently playing" right away while the stream URL is
             // being extracted in the background.
@@ -923,6 +961,113 @@ public partial class MainWindow : Window
             ApplyRecentPlayingHighlightNow();
             _ = vm.PlayRecentAsync(rw);
         }
+        // Stop the routed Click from bubbling to the parent recent-card
+        // when the inline play chip is the source — without this the
+        // card's own RecentWatch_Click would fire a second time.
+        e.Handled = true;
+    }
+
+    // Click on a card in the My-List panel — same flow as the
+    // recently-watched click, except we have a MyListEntry to convert.
+    // Picks the higher of the entry's own saved position and any
+    // matching Recently-watched entry's position so playback always
+    // resumes from the latest known offset, even if the user added the
+    // movie to My-list AFTER they started watching it.
+    private void MyListEntry_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: MyListEntry entry }
+            || DataContext is not MainWindowViewModel vm) return;
+        if (TryRestorePipForPageUrl(entry.PageUrl, sender, e)) return;
+        _pendingPlayingPageUrl = string.IsNullOrEmpty(entry.PageUrl) ? null : entry.PageUrl;
+        ApplyRecentPlayingHighlightNow();
+        var resumeMs = Math.Max(entry.PositionMs, vm.Recent.Find(entry.PageUrl)?.PositionMs ?? 0);
+        _ = vm.PlayResultAsync(entry.ToVideoResult(), resumeMs);
+        e.Handled = true;
+    }
+
+    // Shared "is this card already in PiP playback?" branch used by both
+    // RecentWatch_Click and MyListEntry_Click. Returns true if PiP was
+    // restored (caller should bail out instead of restarting playback).
+    // URL match is case-insensitive and ignores a trailing slash so
+    // trivial variants between the saved entry and the active video
+    // result still resolve to the same item.
+    private bool TryRestorePipForPageUrl(string? pageUrl, object? sender, RoutedEventArgs e)
+    {
+        if (!_isPipMode
+            || _currentVideoResult is null
+            || !PageUrlEquals(_currentVideoResult.PageUrl, pageUrl)) return false;
+        PipRestore_Click(sender, e);
+        e.Handled = true;
+        return true;
+    }
+
+    private static bool PageUrlEquals(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        return string.Equals(a.TrimEnd('/'), b.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The chip on a recently-watched / search-result card — toggles
+    // membership in MyList and syncs IsInMyList across every visible
+    // surface so all chips referring to the same PageUrl flip together.
+    private void ToggleMyList_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || DataContext is not MainWindowViewModel vm) return;
+        VideoResult? source = btn.Tag switch
+        {
+            VideoResult v => v,
+            RecentWatch rw => rw.ToVideoResult(),
+            MyListEntry m => m.ToVideoResult(),
+            _ => null,
+        };
+        if (source is null || string.IsNullOrEmpty(source.PageUrl)) return;
+        // If this movie is already in Recently watched, seed the new
+        // My-list entry with the saved position so its progress bar (and
+        // resume-from-saved-time) work immediately.
+        var existingProgress = vm.Recent.Find(source.PageUrl);
+        var nowSaved = vm.MyList.Toggle(
+            source,
+            existingProgress?.PositionMs ?? 0,
+            existingProgress?.LengthMs ?? 0);
+        SyncIsInMyList(source.PageUrl, nowSaved);
+        e.Handled = true;
+    }
+
+    // The chip in the My-list panel — same as ToggleMyList_Click but
+    // always removes (the panel only shows saved items).
+    private void MyListRemove_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: MyListEntry entry }
+            || DataContext is not MainWindowViewModel vm) return;
+        if (string.IsNullOrEmpty(entry.PageUrl)) return;
+        vm.MyList.Remove(entry.PageUrl);
+        SyncIsInMyList(entry.PageUrl, false);
+        if (MyListEmptyLabel is not null)
+            MyListEmptyLabel.IsVisible = vm.MyList.Items.Count == 0;
+        e.Handled = true;
+    }
+
+    // Mirror MyList membership onto Recent + search Results so all
+    // chips referring to the same movie reflect the new state.
+    private void SyncIsInMyList(string pageUrl, bool isSaved)
+    {
+        if (DataContext is not MainWindowViewModel vm || string.IsNullOrEmpty(pageUrl)) return;
+        foreach (var rw in vm.Recent.Items)
+            if (rw.PageUrl == pageUrl) rw.IsInMyList = isSaved;
+        foreach (var vr in vm.Results)
+            if (vr.PageUrl == pageUrl) vr.IsInMyList = isSaved;
+    }
+
+    // Bulk-sync after load — runs once OnDataContextChanged, and again
+    // when MyList.Items changes, so existing Recent + Results entries
+    // pick up the saved-state on app start.
+    private void RefreshAllIsInMyListFromMyList()
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        foreach (var rw in vm.Recent.Items)
+            rw.IsInMyList = vm.MyList.Contains(rw.PageUrl);
+        foreach (var vr in vm.Results)
+            vr.IsInMyList = vm.MyList.Contains(vr.PageUrl);
     }
 
     // ── Sidebar nav handlers ──────────────────────────────────────────
@@ -950,6 +1095,15 @@ public partial class MainWindow : Window
         ResetStatusForActiveTab();
     }
 
+    private void NavMyList_Click(object? sender, RoutedEventArgs e)
+    {
+        _activeTab = AppView.MyList;
+        UpdateActiveNavTab();
+        if (_currentVideoResult is not null) EnterPipMode();
+        ShowMyListView();
+        ResetStatusForActiveTab();
+    }
+
     private void NavSettings_Click(object? sender, RoutedEventArgs e)
     {
         _activeTab = AppView.Settings;
@@ -967,7 +1121,8 @@ public partial class MainWindow : Window
         if (DataContext is not MainWindowViewModel vm) return;
         vm.Status = _activeTab switch
         {
-            AppView.RecentlyWatched => "Click a movie to resume watching.",
+            AppView.RecentlyWatched => "Click a movie to continue watching.",
+            AppView.MyList => "Click a movie to watch from your list.",
             AppView.Settings => "Settings save automatically.",
             _ => vm.Results.Count > 0 && !string.IsNullOrEmpty(vm.LastSearchTitle)
                 ? $"Found {vm.Results.Count} search results for '{vm.LastSearchTitle}'."
@@ -975,13 +1130,14 @@ public partial class MainWindow : Window
         };
     }
 
-    // Toggles the .active CSS-style class on the three sidebar nav
+    // Toggles the .active CSS-style class on the four sidebar nav
     // buttons so the icon stroke flips to the accent color on the
     // currently-active tab — visual cue for "where am I".
     private void UpdateActiveNavTab()
     {
         SetActive(NavSearchBtn, _activeTab == AppView.Search);
         SetActive(NavRecentBtn, _activeTab == AppView.RecentlyWatched);
+        SetActive(NavMyListBtn, _activeTab == AppView.MyList);
         SetActive(SettingsBtn, _activeTab == AppView.Settings);
     }
 
@@ -1009,6 +1165,7 @@ public partial class MainWindow : Window
         ContentGrid.ColumnDefinitions[1].Width = new GridLength(0);
         ResultsPanel.IsVisible = true;
         RecentlyWatchedPanel.IsVisible = false;
+        MyListPanel.IsVisible = false;
         SettingsPanel.IsVisible = false;
     }
 
@@ -1019,9 +1176,23 @@ public partial class MainWindow : Window
         SearchBar.IsVisible = false;
         ContentGrid.IsVisible = false;
         RecentlyWatchedPanel.IsVisible = true;
+        MyListPanel.IsVisible = false;
         SettingsPanel.IsVisible = false;
         // Re-apply playing highlight in case cards just materialised.
         RefreshRecentPlayingHighlight();
+    }
+
+    private void ShowMyListView()
+    {
+        // Saved-for-later card grid. Same shell as RecentlyWatchedPanel
+        // but bound to MyList.Items.
+        SearchBar.IsVisible = false;
+        ContentGrid.IsVisible = false;
+        RecentlyWatchedPanel.IsVisible = false;
+        MyListPanel.IsVisible = true;
+        SettingsPanel.IsVisible = false;
+        if (DataContext is MainWindowViewModel vm)
+            MyListEmptyLabel.IsVisible = vm.MyList.Items.Count == 0;
     }
 
     private void ShowSettingsView()
@@ -1031,6 +1202,7 @@ public partial class MainWindow : Window
         SearchBar.IsVisible = false;
         ContentGrid.IsVisible = false;
         RecentlyWatchedPanel.IsVisible = false;
+        MyListPanel.IsVisible = false;
         SettingsPanel.IsVisible = true;
     }
 
@@ -1042,6 +1214,7 @@ public partial class MainWindow : Window
         _ = origin;
         ContentGrid.IsVisible = true;
         RecentlyWatchedPanel.IsVisible = false;
+        MyListPanel.IsVisible = false;
         SettingsPanel.IsVisible = false;
         SearchBar.IsVisible = false;
         ContentGrid.ColumnDefinitions[0].Width = new GridLength(0);
@@ -1060,7 +1233,14 @@ public partial class MainWindow : Window
     private void EnterPipMode()
     {
         if (_isPipMode || _currentVideoResult is null) return;
+        // Drop out of fullscreen first so the PiP frame floats over a
+        // normal-windowed app instead of leaving the OS in fullscreen
+        // with a tiny mini-player on top of an otherwise blank screen.
+        // Covers every entry path: PiP toolbar button + sidebar tab
+        // clicks that auto-PiP a playing video.
+        if (WindowState == WindowState.FullScreen) ToggleFullscreen();
         _isPipMode = true;
+        if (DataContext is MainWindowViewModel vmPip) vmPip.IsPipActive = true;
 
         // Hide the full-size video chrome — only the PiP frame is visible.
         TopGradient.IsVisible = false;
@@ -1090,6 +1270,7 @@ public partial class MainWindow : Window
     {
         if (!_isPipMode) return;
         _isPipMode = false;
+        if (DataContext is MainWindowViewModel vmPip) vmPip.IsPipActive = false;
         PipFrame.IsVisible = false;
         PipRestoreBtn.IsVisible = false;
         PipCloseBtn.IsVisible = false;
@@ -1126,16 +1307,169 @@ public partial class MainWindow : Window
         PipFrame.Margin = new Thickness(left, top, 0, 0);
     }
 
-    // PiP toggle button on the full-size video chrome (top-right). Drops
-    // the video into the floating mini-player and shows whichever tab is
-    // currently active behind it.
-    private void EnterPip_Click(object? sender, RoutedEventArgs e)
+    // PipHost resized (window grew, shrank, sidebar tab changed, etc.) —
+    // reposition PipFrame so it keeps the SAME distance from the
+    // bottom-right edge it had before the resize. Without this, the
+    // frame stays anchored to its old absolute top-left margin: shrink
+    // the window and the frame clips off the edge; grow it and the
+    // frame drifts away from the corner.
+    private void OnPipHostSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (!_isPipMode) return;
+        if (e.PreviousSize.Width <= 0 || e.PreviousSize.Height <= 0) return;
+        var frameW = PipFrame.Bounds.Width;
+        var frameH = PipFrame.Bounds.Height;
+        if (frameW <= 0 || frameH <= 0) return;
+
+        // Distance from the right / bottom edges before the resize.
+        var distFromRight = e.PreviousSize.Width - PipFrame.Margin.Left - frameW;
+        var distFromBottom = e.PreviousSize.Height - PipFrame.Margin.Top - frameH;
+
+        var newLeft = e.NewSize.Width - distFromRight - frameW;
+        var newTop = e.NewSize.Height - distFromBottom - frameH;
+
+        // Clamp so the frame stays fully within bounds with the standard
+        // edge padding — protects against the new size being smaller
+        // than the previous distance-from-corner.
+        var maxLeft = Math.Max(PipPaddingFromEdges,
+            e.NewSize.Width - frameW - PipPaddingFromEdges);
+        var maxTop = Math.Max(PipPaddingFromEdges,
+            e.NewSize.Height - frameH - PipPaddingFromEdges);
+        newLeft = Math.Clamp(newLeft, PipPaddingFromEdges, maxLeft);
+        newTop = Math.Clamp(newTop, PipPaddingFromEdges, maxTop);
+
+        PipFrame.Margin = new Thickness(newLeft, newTop, 0, 0);
+    }
+
+    // Press on the scrollbar's track lane → jump the scrollbar to that
+    // position, capture the pointer, and keep updating Value as the
+    // user drags so they can scrub continuously without releasing.
+    // Track has no DecreaseButton/IncreaseButton in our custom template,
+    // so the lane Border is the only thing receiving the press. While
+    // the drag is active we mark the Thumb with a "scrolling" class so
+    // it stays at full opacity even when the cursor leaves the
+    // scrollbar — same feel as a video timeline scrub.
+    private ScrollBar? _trackDragScrollBar;
+    private Track? _trackDragTrack;
+    private Thumb? _trackDragThumb;
+    // Distance between the initial click coordinate and the thumb's
+    // top edge (in track-local coords). Drag updates compute the new
+    // thumb top as cursor − this offset, so the drag tracks 1:1 just
+    // like Avalonia's native thumb drag.
+    private double _trackDragOffsetFromThumbTop;
+
+    private void OnScrollBarTrackClick(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control source) return;
+        if (!e.GetCurrentPoint(source).Properties.IsLeftButtonPressed) return;
+        var scrollBar = source.FindAncestorOfType<ScrollBar>();
+        if (scrollBar is null) return;
+
+        Track? track = null;
+        Thumb? thumb = null;
+        foreach (var d in scrollBar.GetVisualDescendants())
+        {
+            if (track is null && d is Track t) track = t;
+            else if (thumb is null && d is Thumb th) thumb = th;
+            if (track is not null && thumb is not null) break;
+        }
+        if (track is null || thumb is null) return;
+
+        var isVertical = scrollBar.Orientation == Avalonia.Layout.Orientation.Vertical;
+        var trackSize = isVertical ? track.Bounds.Height : track.Bounds.Width;
+        var thumbSize = isVertical ? thumb.Bounds.Height : thumb.Bounds.Width;
+        var usable = trackSize - thumbSize;
+        if (usable <= 0) return;
+
+        var range = scrollBar.Maximum - scrollBar.Minimum;
+        var posInTrack = e.GetPosition(track);
+        var coord = isVertical ? posInTrack.Y : posInTrack.X;
+
+        // Where is the thumb sitting right now (top edge in track-local
+        // coords)? We need this to decide whether the click landed
+        // within the thumb's vertical/horizontal extent.
+        var currentFraction = range > 0
+            ? (scrollBar.Value - scrollBar.Minimum) / range
+            : 0;
+        var thumbTop = currentFraction * usable;
+        var thumbBottom = thumbTop + thumbSize;
+
+        // Click on (or visually next to) the thumb at the same Y/X →
+        // do NOT jump. Mirrors native thumb-drag behavior: the thumb
+        // stays put and starts a drag from its current position.
+        // Click outside the thumb's current extent → jump so the
+        // thumb's center lands on the click, then drag from there.
+        if (coord < thumbTop || coord > thumbBottom)
+        {
+            var desiredTop = coord - thumbSize / 2.0;
+            var newFraction = Math.Clamp(desiredTop / usable, 0.0, 1.0);
+            scrollBar.Value = scrollBar.Minimum + newFraction * range;
+            thumbTop = newFraction * usable;
+        }
+
+        _trackDragOffsetFromThumbTop = coord - thumbTop;
+        _trackDragScrollBar = scrollBar;
+        _trackDragTrack = track;
+        _trackDragThumb = thumb;
+        thumb.Classes.Add("scrolling");
+        e.Pointer.Capture(source);
+        e.Handled = true;
+    }
+
+    private void OnScrollBarTrackPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_trackDragScrollBar is null
+            || _trackDragTrack is null
+            || _trackDragThumb is null) return;
+
+        var isVertical = _trackDragScrollBar.Orientation == Avalonia.Layout.Orientation.Vertical;
+        var trackSize = isVertical ? _trackDragTrack.Bounds.Height : _trackDragTrack.Bounds.Width;
+        var thumbSize = isVertical ? _trackDragThumb.Bounds.Height : _trackDragThumb.Bounds.Width;
+        var usable = trackSize - thumbSize;
+        if (usable <= 0) return;
+
+        var posInTrack = e.GetPosition(_trackDragTrack);
+        var coord = isVertical ? posInTrack.Y : posInTrack.X;
+
+        var newThumbTop = coord - _trackDragOffsetFromThumbTop;
+        var fraction = Math.Clamp(newThumbTop / usable, 0.0, 1.0);
+        var range = _trackDragScrollBar.Maximum - _trackDragScrollBar.Minimum;
+        _trackDragScrollBar.Value = _trackDragScrollBar.Minimum + fraction * range;
+        e.Handled = true;
+    }
+
+    private void OnScrollBarTrackPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackDragScrollBar is null) return;
+        _trackDragThumb?.Classes.Remove("scrolling");
+        _trackDragThumb = null;
+        _trackDragTrack = null;
+        _trackDragScrollBar = null;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    // Single PiP toggle wired to the transport-bar ToggleButton. If
+    // playback is in PiP, restore the full-size player; otherwise drop
+    // into PiP and show whichever tab is currently active behind it.
+    private void TogglePip_Click(object? sender, RoutedEventArgs e)
     {
         if (_currentVideoResult is null) return;
+        if (_isPipMode)
+        {
+            // Exit PiP: restore the playback layout that was up before
+            // (or the active tab if Settings doesn't fit).
+            var target = _activeTab == AppView.Settings ? _originView : _activeTab;
+            if (target == AppView.Settings) target = AppView.Search;
+            ExitPipMode();
+            ShowPlaybackView(target);
+            return;
+        }
         EnterPipMode();
         switch (_activeTab)
         {
             case AppView.RecentlyWatched: ShowRecentlyWatchedView(); break;
+            case AppView.MyList: ShowMyListView(); break;
             case AppView.Settings: ShowSettingsView(); break;
             default: ShowSearchView(); break;
         }
@@ -1239,54 +1573,56 @@ public partial class MainWindow : Window
         var dx = current.X - _pipResizeStart.X;
         var dy = current.Y - _pipResizeStart.Y;
 
-        // Right-side grips grow with +dx; left-side grips grow with -dx.
-        // Bottom-side grips grow with +dy; top-side grips grow with -dy.
-        var xSign = _pipResizeCorner.Contains('R') ? 1 : -1;
-        var ySign = _pipResizeCorner.Contains('B') ? 1 : -1;
+        // Per-axis sign by grip tag. +1 = grow with positive delta (right
+        // / bottom side), -1 = grow with negative delta (left / top side
+        // — opposite edge stays anchored), 0 = axis is locked (edge grip
+        // that doesn't touch this axis). Width and height resize
+        // independently: corners change both axes, edges only one,
+        // letting the user squash or stretch the PiP frame freely.
+        int xSign = _pipResizeCorner switch
+        {
+            "TR" or "BR" or "R" => 1,
+            "TL" or "BL" or "L" => -1,
+            _ => 0,
+        };
+        int ySign = _pipResizeCorner switch
+        {
+            "BR" or "BL" or "B" => 1,
+            "TR" or "TL" or "T" => -1,
+            _ => 0,
+        };
 
-        // Drive resize off whichever axis moved more (translated to width
-        // through the 16:9 aspect) so diagonal drags feel natural while
-        // the frame stays at the right ratio.
-        var widthFromDx = _pipSizeAtResizeStart.Width + dx * xSign;
-        var widthFromDy = (_pipSizeAtResizeStart.Height + dy * ySign) * PipAspect;
-        var newWidth = Math.Max(widthFromDx, widthFromDy);
+        var newWidth = _pipSizeAtResizeStart.Width + (xSign == 0 ? 0 : dx * xSign);
+        var newHeight = _pipSizeAtResizeStart.Height + (ySign == 0 ? 0 : dy * ySign);
 
         // Max bounds depend on which edge stays fixed. Right-side grip ⇒
         // left edge is anchored, so the frame can grow to the right edge
-        // of PipHost. Left-side grip ⇒ right edge is anchored, so the
-        // frame can grow to the left edge of PipHost (= 0 + padding).
-        double maxWidth, maxHeight;
-        if (xSign == 1)
+        // of PipHost. Left-side grip ⇒ right edge is anchored. Locked
+        // axis keeps the starting size as both min and max.
+        double maxWidth = xSign switch
         {
-            maxWidth = Math.Max(PipWidth,
-                PipHost.Bounds.Width - _pipMarginAtResizeStart.Left - PipPaddingFromEdges);
-        }
-        else
+            1 => Math.Max(PipWidth,
+                PipHost.Bounds.Width - _pipMarginAtResizeStart.Left - PipPaddingFromEdges),
+            -1 => Math.Max(PipWidth,
+                _pipMarginAtResizeStart.Left + _pipSizeAtResizeStart.Width - PipPaddingFromEdges),
+            _ => _pipSizeAtResizeStart.Width,
+        };
+        double maxHeight = ySign switch
         {
-            var rightEdge = _pipMarginAtResizeStart.Left + _pipSizeAtResizeStart.Width;
-            maxWidth = Math.Max(PipWidth, rightEdge - PipPaddingFromEdges);
-        }
-        if (ySign == 1)
-        {
-            maxHeight = Math.Max(PipHeight,
-                PipHost.Bounds.Height - _pipMarginAtResizeStart.Top - PipPaddingFromEdges);
-        }
-        else
-        {
-            var bottomEdge = _pipMarginAtResizeStart.Top + _pipSizeAtResizeStart.Height;
-            maxHeight = Math.Max(PipHeight, bottomEdge - PipPaddingFromEdges);
-        }
+            1 => Math.Max(PipHeight,
+                PipHost.Bounds.Height - _pipMarginAtResizeStart.Top - PipPaddingFromEdges),
+            -1 => Math.Max(PipHeight,
+                _pipMarginAtResizeStart.Top + _pipSizeAtResizeStart.Height - PipPaddingFromEdges),
+            _ => _pipSizeAtResizeStart.Height,
+        };
 
-        newWidth = Math.Clamp(newWidth, PipWidth, maxWidth);
-        var newHeight = newWidth / PipAspect;
-        if (newHeight > maxHeight)
-        {
-            newHeight = maxHeight;
-            newWidth = newHeight * PipAspect;
-        }
+        var minWidth = xSign == 0 ? _pipSizeAtResizeStart.Width : PipWidth;
+        var minHeight = ySign == 0 ? _pipSizeAtResizeStart.Height : PipHeight;
+        newWidth = Math.Clamp(newWidth, minWidth, maxWidth);
+        newHeight = Math.Clamp(newHeight, minHeight, maxHeight);
 
-        // Anchor the opposite corner: Margin.Left/Top only changes for
-        // grips whose corner is on that side.
+        // Anchor the opposite edge: Margin.Left/Top only changes for grips
+        // on the left / top side (sign == -1).
         var newLeft = _pipMarginAtResizeStart.Left;
         var newTop = _pipMarginAtResizeStart.Top;
         if (xSign == -1)
@@ -1354,6 +1690,10 @@ public partial class MainWindow : Window
         PipResizeGripTR.IsVisible = visible;
         PipResizeGripBL.IsVisible = visible;
         PipResizeGripBR.IsVisible = visible;
+        PipResizeGripT.IsVisible = visible;
+        PipResizeGripB.IsVisible = visible;
+        PipResizeGripL.IsVisible = visible;
+        PipResizeGripR.IsVisible = visible;
     }
 
     // Drives both loading spinners (full-size + PiP) from a single call.
@@ -1364,6 +1704,13 @@ public partial class MainWindow : Window
     {
         if (LoadingOverlay is not null) LoadingOverlay.IsVisible = loading;
         if (PipLoadingOverlay is not null) PipLoadingOverlay.IsVisible = loading;
+        // Gate the spinner animation on a class so it only runs while
+        // loading. Avalonia's IterationCount="INFINITE" keeps
+        // invalidating the target even when the parent is hidden, which
+        // leaks a faint ghost square into the video area; toggling the
+        // class detaches the animation outright when not loading.
+        if (LoadingSpinner is not null) LoadingSpinner.Classes.Set("spinning", loading);
+        if (PipLoadingSpinner is not null) PipLoadingSpinner.Classes.Set("spinning", loading);
     }
 
     // Auto-hide UI: show the restore button + mini transport while there's
@@ -1396,6 +1743,16 @@ public partial class MainWindow : Window
         SetPipResizeGripsVisible(false);
     }
 
+    // Clicks on the title-strip text area should NOT start playback —
+    // playback is reserved for the poster image and the inline play
+    // button. Marking PointerPressed handled here prevents the parent
+    // recent-card Button's press tracking, so it never raises Click on
+    // release. Inner action chips raise their own Click on release as
+    // usual. Hover events (PointerEntered/Exited on the recent-card)
+    // are unaffected, so the strip still triggers hover state.
+    private void TitleStrip_PointerPressed(object? sender, PointerPressedEventArgs e)
+        => e.Handled = true;
+
     private void RecentCard_PointerEntered(object? sender, PointerEventArgs e)
     {
         if (sender is not Button btn) return;
@@ -1411,8 +1768,9 @@ public partial class MainWindow : Window
     }
 
     // Shared visual update for a recent card. The "currently-playing"
-    // card stays in the hover state regardless of pointer position;
-    // other cards follow normal hover-on / hover-off rules.
+    // card keeps its accent border and shows the inline badge regardless
+    // of pointer position; other cards follow normal hover-on / hover-off
+    // rules for the accent border alone.
     private void ApplyRecentCardVisuals(Button card, bool hovered)
     {
         var isPlaying = IsRecentCardPlaying(card);
@@ -1423,31 +1781,55 @@ public partial class MainWindow : Window
                 ? ResolveAccentBrush(card)
                 : Avalonia.Media.Brushes.Transparent;
 
-        if (FindBorderByClass(card, "resume") is Border resume)
+        // Scrim darkens the poster image on hover OR when playing —
+        // gives every hovered card the same "active" look as the
+        // currently-playing one.
+        if (FindBorderByClass(card, "playing-scrim") is Border scrim)
+            scrim.IsVisible = show;
+
+        // Badge shows in both states: "Currently playing" stays visible
+        // while the card represents the active video; on hover (when
+        // not playing) it flips to "Continue playing" so the user knows
+        // a click will resume from the saved position.
+        if (FindByClass(card, "playing-badge") is TextBlock badge)
         {
-            resume.IsVisible = show;
-            if (FindFirstTextBlock(resume) is TextBlock label)
-                label.Text = isPlaying ? "Currently playing" : "Resume";
+            badge.IsVisible = show;
+            badge.Text = isPlaying ? "Currently playing" : "Continue playing";
         }
     }
 
+    // True if this card represents the movie currently being played.
+    // Recognises both Recently watched (RecentWatch) and My list
+    // (MyListEntry) tags; pending click takes precedence so a freshly
+    // tapped card lights up immediately, even before the player has
+    // actually started.
     private bool IsRecentCardPlaying(Button card)
     {
-        if (card.Tag is not RecentWatch rw || string.IsNullOrEmpty(rw.PageUrl))
-            return false;
-        // Pending click takes precedence so a freshly-tapped card lights
-        // up immediately, even before the player has actually started.
+        var pageUrl = card.Tag switch
+        {
+            RecentWatch rw => rw.PageUrl,
+            MyListEntry me => me.PageUrl,
+            _ => null,
+        };
+        if (string.IsNullOrEmpty(pageUrl)) return false;
         var activeUrl = _pendingPlayingPageUrl ?? _currentVideoResult?.PageUrl;
-        return activeUrl is not null && rw.PageUrl == activeUrl;
+        return activeUrl is not null && pageUrl == activeUrl;
     }
 
-    // Sweeps every materialised recent-card and re-applies its visual state
-    // synchronously. Use this when the cards are already in the visual tree
-    // (e.g. tearing down the highlight on close).
+    // Sweeps every materialised recent-card across BOTH the Recently
+    // watched and My list panels and re-applies its visual state
+    // synchronously. Use this when the cards are already in the visual
+    // tree (e.g. tearing down the highlight on close).
     private void ApplyRecentPlayingHighlightNow()
     {
-        if (RecentlyWatchedPanel is null) return;
-        foreach (var d in RecentlyWatchedPanel.GetVisualDescendants())
+        SweepRecentCards(RecentlyWatchedPanel);
+        SweepRecentCards(MyListPanel);
+    }
+
+    private void SweepRecentCards(Control? root)
+    {
+        if (root is null) return;
+        foreach (var d in root.GetVisualDescendants())
         {
             if (d is Button btn && btn.Classes.Contains("recent-card"))
                 ApplyRecentCardVisuals(btn, hovered: false);
@@ -1471,6 +1853,22 @@ public partial class MainWindow : Window
     {
         foreach (var d in root.GetVisualDescendants())
             if (d is TextBlock tb) return tb;
+        return null;
+    }
+
+    private static TextBlock? FindTextBlockByClass(Control root, string className)
+    {
+        foreach (var d in root.GetVisualDescendants())
+            if (d is TextBlock tb && tb.Classes.Contains(className)) return tb;
+        return null;
+    }
+
+    // Generic version — used when the bearer of the class can be any
+    // Control (e.g. a StackPanel that wraps an icon + label).
+    private static Control? FindByClass(Control root, string className)
+    {
+        foreach (var d in root.GetVisualDescendants())
+            if (d is Control c && c.Classes.Contains(className)) return c;
         return null;
     }
 
@@ -1543,6 +1941,7 @@ public partial class MainWindow : Window
         switch (_originView)
         {
             case AppView.RecentlyWatched: ShowRecentlyWatchedView(); break;
+            case AppView.MyList: ShowMyListView(); break;
             case AppView.Settings: ShowSettingsView(); break;
             default: ShowSearchView(); break;
         }
@@ -1572,6 +1971,7 @@ public partial class MainWindow : Window
         // and recreated — recreation flickered the "Currently playing"
         // overlay every time we paused / closed.
         vm.Recent.UpdatePositionAndSave(_currentVideoResult, pos, Math.Max(0, len));
+        vm.MyList.UpdatePositionAndSave(_currentVideoResult, pos, Math.Max(0, len));
     }
 
     private void OpenSource_Click(object? sender, RoutedEventArgs e)
@@ -1686,7 +2086,7 @@ public partial class MainWindow : Window
         {
             WindowState = _preFullScreenState;
             TitleBar.IsVisible = true;
-            StatusText.IsVisible = true;
+            StatusFooter.IsVisible = true;
             SidebarRail.IsVisible = true;
             BodyGrid.ColumnDefinitions[0].Width = new GridLength(64);
             RootGrid.Margin = new Thickness(12);
@@ -1731,7 +2131,7 @@ public partial class MainWindow : Window
             TitleBar.IsVisible = false;
             SearchBar.IsVisible = false;
             ResultsPanel.IsVisible = false;
-            StatusText.IsVisible = false;
+            StatusFooter.IsVisible = false;
             SidebarRail.IsVisible = false;
             BodyGrid.ColumnDefinitions[0].Width = new GridLength(0);
             ContentGrid.ColumnDefinitions[0].Width = new GridLength(0);

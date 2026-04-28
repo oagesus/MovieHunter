@@ -19,6 +19,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public SourcesSettings Sources { get; } = new();
     public RecentlyWatched Recent { get; } = new();
+    public MyList MyList { get; } = new();
 
     public MainWindowViewModel()
     {
@@ -33,6 +34,11 @@ public partial class MainWindowViewModel : ViewModelBase
 
         Sources.Load();
         Recent.Load();
+        MyList.Load();
+        // Backfill My-list progress from Recently watched: covers entries
+        // saved before position tracking existed and movies played from
+        // other tabs that never updated the My-list copy.
+        MyList.SeedProgressFromRecent(Recent);
         _ = InitializeSourcesAsync();
     }
 
@@ -57,6 +63,9 @@ public partial class MainWindowViewModel : ViewModelBase
     // "<N> results for '<query>'." in the status bar even after the user
     // edits the Title field.
     [ObservableProperty] private string _lastSearchTitle = "";
+    // Drives the transport-bar PiP ToggleButton's enter/exit glyph swap.
+    // The View toggles this from EnterPipMode / ExitPipMode.
+    [ObservableProperty] private bool _isPipActive;
 
     public ObservableCollection<VideoResult> Results { get; } = new();
 
