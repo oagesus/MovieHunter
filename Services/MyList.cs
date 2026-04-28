@@ -62,11 +62,6 @@ public class MyList
         !string.IsNullOrWhiteSpace(pageUrl)
         && Items.Any(i => i.PageUrl == pageUrl);
 
-    public MyListEntry? Find(string? pageUrl) =>
-        string.IsNullOrWhiteSpace(pageUrl)
-            ? null
-            : Items.FirstOrDefault(i => i.PageUrl == pageUrl);
-
     public void Load()
     {
         if (!File.Exists(FilePath)) return;
@@ -128,16 +123,34 @@ public class MyList
     }
 
     /// <summary>
-    /// Adds the entry (or floats it to the top) and persists. Returns
-    /// true if it was added; false if it was already there. The caller
-    /// can pass an existing position/length so a movie that's already
-    /// in Recently watched starts the My-list entry pre-populated.
+    /// Adds the entry and persists. Returns true if it was added; false
+    /// if it was already there. The caller can pass an existing
+    /// position/length so a movie that's already in Recently watched
+    /// starts the My-list entry pre-populated. <paramref name="preserveAtTopPageUrl"/>
+    /// is the PageUrl of a movie that should stay pinned at index 0
+    /// (typically the currently-playing one) — when supplied and that
+    /// entry is at the top, the new entry slots in at index 1 instead.
     /// </summary>
-    public bool Add(VideoResult source, long positionMs = 0, long lengthMs = 0)
+    public bool Add(VideoResult source, long positionMs = 0, long lengthMs = 0,
+                    string? preserveAtTopPageUrl = null)
     {
         if (string.IsNullOrWhiteSpace(source.PageUrl)) return false;
         if (Contains(source.PageUrl)) return false;
-        Items.Insert(0, new MyListEntry
+        // Slot in at index 1 if the currently-playing movie is already
+        // pinned at index 0 — without this the new addition pushes the
+        // playing movie down to index 1, which feels wrong (the user
+        // expects "what I'm watching now" to stay on top).
+        var insertIndex = 0;
+        if (!string.IsNullOrEmpty(preserveAtTopPageUrl)
+            && !string.Equals(preserveAtTopPageUrl, source.PageUrl,
+                              StringComparison.OrdinalIgnoreCase)
+            && Items.Count > 0
+            && string.Equals(Items[0].PageUrl, preserveAtTopPageUrl,
+                             StringComparison.OrdinalIgnoreCase))
+        {
+            insertIndex = 1;
+        }
+        Items.Insert(insertIndex, new MyListEntry
         {
             Title = source.Title,
             Source = source.Source,
@@ -171,9 +184,12 @@ public class MyList
 
     /// <summary>
     /// Toggles membership and persists. Returns the new state
-    /// (true = saved, false = removed).
+    /// (true = saved, false = removed). <paramref name="preserveAtTopPageUrl"/>
+    /// is forwarded to <see cref="Add"/> so a new addition slots in
+    /// after the currently-playing movie instead of pushing it down.
     /// </summary>
-    public bool Toggle(VideoResult source, long positionMs = 0, long lengthMs = 0)
+    public bool Toggle(VideoResult source, long positionMs = 0, long lengthMs = 0,
+                       string? preserveAtTopPageUrl = null)
     {
         if (string.IsNullOrWhiteSpace(source.PageUrl)) return false;
         if (Contains(source.PageUrl))
@@ -181,7 +197,7 @@ public class MyList
             Remove(source.PageUrl);
             return false;
         }
-        Add(source, positionMs, lengthMs);
+        Add(source, positionMs, lengthMs, preserveAtTopPageUrl);
         return true;
     }
 
@@ -242,6 +258,28 @@ public class MyList
         if (existing is null) return;
         existing.PositionMs = Math.Max(0, positionMs);
         existing.LengthMs = Math.Max(0, lengthMs);
+        Save();
+    }
+
+    /// <summary>
+    /// If the movie is already in My-list, removes its entry and
+    /// re-inserts it at the top, so the list's display order reflects
+    /// the most recent play (same pattern as RecentlyWatched.UpsertAndSave).
+    /// No-op if the movie isn't saved (we don't auto-add on play) or if
+    /// it's already at index 0. Persists when something moved.
+    /// </summary>
+    public void MoveToTopAndSave(VideoResult source)
+    {
+        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
+        var idx = -1;
+        for (var i = 0; i < Items.Count; i++)
+        {
+            if (Items[i].PageUrl == source.PageUrl) { idx = i; break; }
+        }
+        if (idx <= 0) return;
+        var entry = Items[idx];
+        Items.RemoveAt(idx);
+        Items.Insert(0, entry);
         Save();
     }
 

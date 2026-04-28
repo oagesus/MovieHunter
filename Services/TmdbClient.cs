@@ -18,27 +18,9 @@ public record TmdbMovie(
     string? GermanTitle,
     string? EnglishTitle,
     string? Year,
-    string? Overview,
-    string? PosterUrl,
     double Popularity,
-    double? VoteAverage,
     string? ImdbId,
-    int? CollectionId)
-{
-    /// <summary>Unique set of titles to use when searching downstream sources.</summary>
-    public IReadOnlyList<string> QueryTitles
-    {
-        get
-        {
-            var list = new List<string>();
-            void add(string? s) { if (!string.IsNullOrWhiteSpace(s) && !list.Contains(s!)) list.Add(s!); }
-            add(OriginalTitle);
-            add(GermanTitle);
-            add(EnglishTitle);
-            return list;
-        }
-    }
-}
+    int? CollectionId);
 
 public class TmdbClient
 {
@@ -104,13 +86,8 @@ public class TmdbClient
                 var title = e.TryGetProperty("title", out var t) ? t.GetString() : null;
                 var release = e.TryGetProperty("release_date", out var r)
                     ? r.GetString() : null;
-                var overview = e.TryGetProperty("overview", out var ov) ? ov.GetString() : null;
-                var posterPath = e.TryGetProperty("poster_path", out var pp)
-                    ? pp.GetString() : null;
                 var popularity = e.TryGetProperty("popularity", out var pop) && pop.ValueKind == JsonValueKind.Number
                     ? pop.GetDouble() : 0;
-                var vote = e.TryGetProperty("vote_average", out var va) && va.ValueKind == JsonValueKind.Number
-                    ? va.GetDouble() : (double?)null;
 
                 results.Add(new TmdbMovie(
                     Id: id,
@@ -118,10 +95,7 @@ public class TmdbClient
                     GermanTitle: null,
                     EnglishTitle: title,
                     Year: release?.Length >= 4 ? release[..4] : null,
-                    Overview: overview,
-                    PosterUrl: !string.IsNullOrEmpty(posterPath) ? ImageBase + posterPath : null,
                     Popularity: popularity,
-                    VoteAverage: vote,
                     ImdbId: null,
                     CollectionId: null));
             }
@@ -265,13 +239,8 @@ public class TmdbClient
                     var originalTitle = p.TryGetProperty("original_title", out var ot)
                         ? ot.GetString() ?? "" : "";
                     var release = p.TryGetProperty("release_date", out var r) ? r.GetString() : null;
-                    var overview = p.TryGetProperty("overview", out var ov) ? ov.GetString() : null;
-                    var posterPath = p.TryGetProperty("poster_path", out var pp)
-                        ? pp.GetString() : null;
                     var popularity = p.TryGetProperty("popularity", out var pop) && pop.ValueKind == JsonValueKind.Number
                         ? pop.GetDouble() : 0;
-                    var vote = p.TryGetProperty("vote_average", out var va) && va.ValueKind == JsonValueKind.Number
-                        ? va.GetDouble() : (double?)null;
 
                     results.Add(new TmdbMovie(
                         Id: id,
@@ -279,10 +248,7 @@ public class TmdbClient
                         GermanTitle: language == "de-DE" ? title : null,
                         EnglishTitle: language == "en-US" ? title : originalTitle,
                         Year: release?.Length >= 4 ? release[..4] : null,
-                        Overview: overview,
-                        PosterUrl: !string.IsNullOrEmpty(posterPath) ? ImageBase + posterPath : null,
                         Popularity: popularity,
-                        VoteAverage: vote,
                         ImdbId: null,
                         CollectionId: collectionId));
                 }

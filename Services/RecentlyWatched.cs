@@ -193,6 +193,31 @@ public class RecentlyWatched
     public RecentWatch? Find(string pageUrl) =>
         Items.FirstOrDefault(i => i.PageUrl == pageUrl);
 
+    /// <summary>
+    /// If the movie is already in Recently watched, removes its entry
+    /// and re-inserts it at the top so the list reflects the most
+    /// recent click immediately (without waiting for the stream URL
+    /// extraction → OnPlayRequested → UpsertAndSave round-trip, which
+    /// can take ~500 ms). No-op if the movie isn't tracked yet (a fresh
+    /// search result), or if it's already at position 0. Persists when
+    /// something moved.
+    /// </summary>
+    public void MoveToTopAndSave(VideoResult source)
+    {
+        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
+        var idx = -1;
+        for (var i = 0; i < Items.Count; i++)
+        {
+            if (Items[i].PageUrl == source.PageUrl) { idx = i; break; }
+        }
+        if (idx <= 0) return;
+        var entry = Items[idx];
+        entry.LastWatchedUtc = DateTime.UtcNow;
+        Items.RemoveAt(idx);
+        Items.Insert(0, entry);
+        Save();
+    }
+
     private static string? Str(JsonElement el, string prop)
     {
         if (!el.TryGetProperty(prop, out var v)) return null;

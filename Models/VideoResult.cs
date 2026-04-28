@@ -12,13 +12,6 @@ public partial class VideoResult : ObservableObject
     public string? Duration { get; init; }
     public string? Year { get; init; }
     public string? Language { get; init; }
-    public string? Description { get; init; }
-
-    // Optional TMDb enrichment (populated when TMDb lookup is enabled and
-    // the result matches a known movie).
-    public int? TmdbId { get; init; }
-    public string? ImdbId { get; init; }
-    public double? Rating { get; init; }
 
     // Mutable runtime state — set by the My-List sync after load and by
     // ToggleMyList_Click. Notifies so the poster chip flips state in place.

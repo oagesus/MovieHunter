@@ -91,7 +91,6 @@ public class SearxngClient
                 ThumbnailUrl = ResolveUrl(Str(r, "thumbnail"), u!),
                 Duration = Str(r, "length") ?? parsedDuration,
                 Year = parsedYear,
-                Description = content,
             });
         }
         return list;
