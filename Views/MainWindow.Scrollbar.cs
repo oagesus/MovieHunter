@@ -1,7 +1,9 @@
 using System;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.VisualTree;
 
 namespace MovieHunter.Views;
@@ -71,7 +73,7 @@ public partial class MainWindow
         {
             var desiredTop = coord - thumbSize / 2.0;
             var newFraction = Math.Clamp(desiredTop / usable, 0.0, 1.0);
-            scrollBar.Value = scrollBar.Minimum + newFraction * range;
+            ApplyScrollFraction(scrollBar, isVertical, newFraction, range);
             thumbTop = newFraction * usable;
         }
 
@@ -102,8 +104,38 @@ public partial class MainWindow
         var newThumbTop = coord - _trackDragOffsetFromThumbTop;
         var fraction = Math.Clamp(newThumbTop / usable, 0.0, 1.0);
         var range = _trackDragScrollBar.Maximum - _trackDragScrollBar.Minimum;
-        _trackDragScrollBar.Value = _trackDragScrollBar.Minimum + fraction * range;
+        ApplyScrollFraction(_trackDragScrollBar, isVertical, fraction, range);
         e.Handled = true;
+    }
+
+    // Scrolls the parent ScrollViewer to the given fraction of its
+    // total scrollable extent (or falls back to setting the ScrollBar
+    // value when no ScrollViewer ancestor is found). Setting
+    // ScrollViewer.Offset directly is more reliable than setting
+    // ScrollBar.Value because Offset is the source of truth for
+    // scroll position in Avalonia — the ScrollBar's value updates from
+    // the framework binding back to it. Setting ScrollBar.Value
+    // directly can leave the binding in a state where subsequent
+    // mouse-wheel events change Offset but the scrollbar visual
+    // doesn't follow, which is exactly the post-track-click bug we
+    // were seeing.
+    private static void ApplyScrollFraction(
+        ScrollBar scrollBar, bool isVertical, double fraction, double range)
+    {
+        var sv = scrollBar.FindAncestorOfType<ScrollViewer>();
+        if (sv is not null)
+        {
+            var totalScrollable = isVertical
+                ? sv.Extent.Height - sv.Viewport.Height
+                : sv.Extent.Width - sv.Viewport.Width;
+            totalScrollable = Math.Max(0, totalScrollable);
+            var newOffset = fraction * totalScrollable;
+            sv.Offset = isVertical
+                ? new Vector(sv.Offset.X, newOffset)
+                : new Vector(newOffset, sv.Offset.Y);
+            return;
+        }
+        scrollBar.Value = scrollBar.Minimum + fraction * range;
     }
 
     private void OnScrollBarTrackPointerReleased(object? sender, PointerReleasedEventArgs e)

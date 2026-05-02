@@ -91,6 +91,12 @@ public class SearxngClient
                 ThumbnailUrl = ResolveUrl(Str(r, "thumbnail"), u!),
                 Duration = Str(r, "length") ?? parsedDuration,
                 Year = parsedYear,
+                // bsto returns series-listing pages; clicking the result
+                // opens the episode-picker overlay rather than starting
+                // playback directly. Every other engine returns single
+                // playable pages, so default kind = Movie.
+                Kind = string.Equals(engine, "bsto", StringComparison.OrdinalIgnoreCase)
+                    ? VideoKind.Series : VideoKind.Movie,
             });
         }
         return list;

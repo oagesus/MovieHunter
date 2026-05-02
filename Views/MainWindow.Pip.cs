@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using LibVLCSharp.Shared;
+using MovieHunter.Services;
 using MovieHunter.ViewModels;
 
 namespace MovieHunter.Views;
@@ -186,9 +187,21 @@ public partial class MainWindow
     // video result still resolve to the same item.
     private bool TryRestorePipForPageUrl(string? pageUrl, object? sender, RoutedEventArgs e)
     {
-        if (!_isPipMode
-            || _currentVideoResult is null
-            || !PageUrlEquals(_currentVideoResult.PageUrl, pageUrl)) return false;
+        // Match against the active video's RecentKey (series URL when
+        // an episode is playing) so clicking a series card while one
+        // of its episodes is the active PiP video also restores.
+        // Cross-language fallback: a click on any language variant
+        // card (German default / /de / /des / /en) while another
+        // variant of the same show is the active PiP video should
+        // still restore — all variants point at the same logical show.
+        if (!_isPipMode || _currentVideoResult is null) return false;
+        var key = _currentVideoResult.RecentKey;
+        var matchesDirect = PageUrlEquals(key, pageUrl);
+        var matchesStripped = !matchesDirect
+            && !string.IsNullOrEmpty(key)
+            && key.Contains("bs.to", StringComparison.OrdinalIgnoreCase)
+            && BsToUrl.SameLanguageStripped(key, pageUrl);
+        if (!matchesDirect && !matchesStripped) return false;
         PipRestore_Click(sender, e);
         // The user clicked "play" on a card matching the active PiP
         // movie — they expect playback to resume, not just the mini

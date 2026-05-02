@@ -27,6 +27,92 @@ public class TmdbClient
     private const string Base = "https://api.themoviedb.org/3";
     private const string ImageBase = "https://image.tmdb.org/t/p/w342";
 
+    /// <summary>
+    /// Looks up a TV series by title and returns the top match's poster URL
+    /// (built off ImageBase), or null if no match / TMDb disabled / network
+    /// error. Used to enrich bs.to series results — bs.to's directory only
+    /// returns text, so the poster is fetched separately. Compares German
+    /// + English + original titles to pick the most popular match.
+    /// </summary>
+    public async Task<string?> SearchTvPosterAsync(
+        string apiKey, string title, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(title))
+            return null;
+
+        // bs.to titles often carry a " | xxx" suffix that's either a
+        // country / abbreviation code ("One Piece | OP", "Game of
+        // Thrones | GoT") or an alternate-language title ("Tongari
+        // Boushi no Atelier | Witch Hat Atelier"). TMDB's /search/tv
+        // doesn't index those suffixes, so a literal full-title query
+        // misses on shows where the suffix pushes the fuzzy match past
+        // its threshold (longer / more common base titles fail more
+        // often than short distinctive ones, which is why GoT happens
+        // to land but OP doesn't). Try the full string first (covers
+        // titles with no suffix and the few cases where TMDB's fuzz
+        // tolerates it), then the prefix before " | " (handles the
+        // abbreviation case), then the suffix (handles the English
+        // alt-title case where the prefix is the foreign title).
+        // Each variant queries de-DE first then default — same as
+        // before, so the German bias is preserved per attempt.
+        foreach (var variant in EnumerateTitleVariants(title))
+        {
+            var posterPath = await FetchTvPosterPathAsync(apiKey, variant, "de-DE", ct);
+            posterPath ??= await FetchTvPosterPathAsync(apiKey, variant, null, ct);
+            if (!string.IsNullOrEmpty(posterPath))
+                return ImageBase + posterPath;
+        }
+        return null;
+    }
+
+    private static IEnumerable<string> EnumerateTitleVariants(string title)
+    {
+        var trimmed = title.Trim();
+        yield return trimmed;
+        var sep = trimmed.IndexOf(" | ", StringComparison.Ordinal);
+        if (sep < 0) yield break;
+        var prefix = trimmed[..sep].Trim();
+        var suffix = trimmed[(sep + 3)..].Trim();
+        if (!string.IsNullOrEmpty(prefix) && prefix != trimmed)
+            yield return prefix;
+        if (!string.IsNullOrEmpty(suffix) && suffix != prefix)
+            yield return suffix;
+    }
+
+    private async Task<string?> FetchTvPosterPathAsync(
+        string apiKey, string query, string? language, CancellationToken ct)
+    {
+        var url = $"{Base}/search/tv?api_key={Uri.EscapeDataString(apiKey)}"
+                + $"&query={Uri.EscapeDataString(query)}";
+        if (!string.IsNullOrEmpty(language)) url += $"&language={language}";
+
+        try
+        {
+            using var resp = await _http.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            if (!doc.RootElement.TryGetProperty("results", out var arr)
+                || arr.ValueKind != JsonValueKind.Array)
+                return null;
+
+            // Pick the highest-popularity hit that has a poster_path. TMDb's
+            // default ordering is already popularity-desc, so first-with-poster
+            // is the intended top match.
+            foreach (var e in arr.EnumerateArray())
+            {
+                if (!e.TryGetProperty("poster_path", out var pp)) continue;
+                if (pp.ValueKind != JsonValueKind.String) continue;
+                var p = pp.GetString();
+                if (!string.IsNullOrEmpty(p)) return p;
+            }
+            return null;
+        }
+        catch (HttpRequestException) { return null; }
+        catch (TaskCanceledException) { return null; }
+        catch (JsonException) { return null; }
+    }
+
     private readonly HttpClient _http;
 
     public TmdbClient(HttpClient http) => _http = http;

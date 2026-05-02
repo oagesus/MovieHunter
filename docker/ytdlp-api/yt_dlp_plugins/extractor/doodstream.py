@@ -22,11 +22,22 @@ from yt_dlp.utils import ExtractorError
 class DoodStreamIE(InfoExtractor):
     IE_NAME = "doodstream"
 
-    # DoodStream has many mirrors — this list covers the common ones as of 2026.
+    # DoodStream rotates through many mirror domains. The classic
+    # `dood.*` family + observed-in-the-wild rebrand domains. New
+    # mirrors keep appearing (recent additions: do7go, playmogo,
+    # vidply, doply, vide0); add them here when you hit "Unsupported
+    # URL" in docker logs for one.
     _VALID_URL = (
         r"https?://(?:www\.)?"
+        r"(?:"
         r"(?:dood(?:stream)?|ds2play|d000?d|d0000d)"
-        r"\.(?:to|so|cc|la|pm|yt|wf|ch|li|re|net|ws|club|watch|stream|com)"
+        r"\.(?:to|so|cc|la|pm|yt|wf|ch|li|re|net|ws|club|watch|stream|com|sh|one|info)"
+        r"|do7go\.com"
+        r"|playmogo\.(?:com|net|to)"
+        r"|vidply\.(?:com|net)"
+        r"|doply\.(?:com|net)"
+        r"|vide0\.(?:com|net)"
+        r")"
         r"/[ed]/(?P<id>[a-z0-9]+)"
     )
 
@@ -65,10 +76,14 @@ class DoodStreamIE(InfoExtractor):
             raise ExtractorError("DoodStream: video was removed", expected=True)
 
         pass_md5_path = self._search_regex(
-            r"(/pass_md5/[\w/-]+)", webpage, "pass_md5 path")
-
+            r"(/pass_md5/[\w/-]+)", webpage, "pass_md5 path", default=None)
         token = self._search_regex(
-            r"[?&]token=([a-zA-Z0-9_-]+)", webpage, "token")
+            r"[?&]token=([a-zA-Z0-9_-]+)", webpage, "token", default=None)
+        if not pass_md5_path or not token:
+            raise ExtractorError(
+                "DoodStream: pass_md5 / token not found in page (layout changed?)",
+                expected=True,
+            )
 
         title = (
             self._og_search_title(webpage, default=None)
@@ -124,15 +139,16 @@ class DoodStreamIE(InfoExtractor):
             with urllib.request.urlopen(req, timeout=8) as resp:
                 resolved = resp.geturl()
                 if resolved and resolved != stream_url:
-                    self.to_screen(
-                        f"[doodstream] followed redirect: {stream_url} → {resolved}"
-                    )
                     stream_url = resolved
                 if resp.status >= 400:
                     raise ExtractorError(
                         f"DoodStream CDN returned HTTP {resp.status}",
                         expected=True,
                     )
+        except urllib.error.HTTPError as e:
+            raise ExtractorError(
+                f"DoodStream CDN returned HTTP {e.code}", expected=True,
+            )
         except (urllib.error.URLError, OSError, TimeoutError) as e:
             # Connection refused, DNS failure, timeout — all signal that this
             # CDN edge is unreachable from our network. Bail early so the

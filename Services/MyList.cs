@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -13,7 +14,9 @@ public partial class MyListEntry : ObservableObject
     public string Title { get; init; } = "";
     public string Source { get; init; } = "";
     public string PageUrl { get; init; } = "";
-    public string? ThumbnailUrl { get; init; }
+    // Observable so the on-startup TMDb backfill on MainWindowViewModel
+    // can flip the bound Image control over once a poster URL resolves.
+    [ObservableProperty] private string? _thumbnailUrl;
     public string? Year { get; init; }
     public string? Duration { get; init; }
 
@@ -28,10 +31,60 @@ public partial class MyListEntry : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Progress))]
     private long _lengthMs;
 
+    // Series-only: most-recently-played episode metadata. Mirrored from
+    // the matching RecentWatch entry whenever we play an episode of this
+    // series so the My-list card can show "S1E20 · EpisodeName" the same
+    // way Recently watched does. Persisted alongside everything else.
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(EpisodeSubtitle))]
+    private string? _lastEpisodeTitle;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(EpisodeSubtitle))]
+    private int? _lastSeasonNumber;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(EpisodeSubtitle))]
+    private int? _lastEpisodeNumber;
+
     /// <summary>0.0 – 1.0 fraction watched, 0 when length is unknown.</summary>
     public double Progress => LengthMs > 0
         ? Math.Clamp((double)PositionMs / LengthMs, 0.0, 1.0)
         : 0.0;
+
+    /// <summary>
+    /// True when the user has any saved playback progress (PositionMs &gt; 0).
+    /// Drives the My-list-card hover badge: cards without progress show
+    /// "Start playing"; cards with progress show "Continue playing".
+    /// MyList only tracks the top-level position (it doesn't carry a
+    /// per-episode dict like RecentWatch), so the check is single-field.
+    /// </summary>
+    public bool IsStarted => PositionMs > 0;
+
+    /// <summary>
+    /// Mirrors <see cref="RecentWatch.IsSeries"/> — drives the
+    /// chevron-down "more episodes" chip on the My-list poster card so
+    /// it only shows for series entries (currently bs.to). RecentWatch
+    /// has a richer signal (LastEpisodeUrl), but My-list doesn't track
+    /// per-episode state, so we lean on the source URL the same way
+    /// MainWindow.Cards.IsBstoUrl does.
+    /// </summary>
+    public bool IsSeries => !string.IsNullOrEmpty(PageUrl)
+        && PageUrl.Contains("bs.to", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>"S02E05 · Title" line, mirroring RecentWatch.EpisodeSubtitle.
+    /// Null when no episode has been played yet so the binding hides
+    /// itself. Movies always return null since LastEpisodeNumber stays
+    /// unset.</summary>
+    public string? EpisodeSubtitle
+    {
+        get
+        {
+            if (!IsSeries) return null;
+            var prefix = LastSeasonNumber is { } s && LastEpisodeNumber is { } e
+                ? $"S{s:00}E{e:00}"
+                : null;
+            if (prefix is null && string.IsNullOrEmpty(LastEpisodeTitle))
+                return null;
+            if (prefix is null) return LastEpisodeTitle;
+            return string.IsNullOrEmpty(LastEpisodeTitle) ? prefix : $"{prefix} · {LastEpisodeTitle}";
+        }
+    }
 
     public VideoResult ToVideoResult() => new()
     {
@@ -88,6 +141,9 @@ public class MyList
                     Duration = Str(el, "duration"),
                     PositionMs = Int64(el, "positionMs"),
                     LengthMs = Int64(el, "lengthMs"),
+                    LastEpisodeTitle = Str(el, "lastEpisodeTitle"),
+                    LastSeasonNumber = NullableInt(el, "lastSeasonNumber"),
+                    LastEpisodeNumber = NullableInt(el, "lastEpisodeNumber"),
                     AddedUtc = el.TryGetProperty("addedUtc", out var w)
                         && w.TryGetDateTime(out var d) ? d : DateTime.UtcNow,
                 });
@@ -113,6 +169,9 @@ public class MyList
                     duration = i.Duration,
                     positionMs = i.PositionMs,
                     lengthMs = i.LengthMs,
+                    lastEpisodeTitle = i.LastEpisodeTitle,
+                    lastSeasonNumber = i.LastSeasonNumber,
+                    lastEpisodeNumber = i.LastEpisodeNumber,
                     addedUtc = i.AddedUtc,
                 }).ToList(),
             };
@@ -233,14 +292,164 @@ public class MyList
     }
 
     /// <summary>
+    /// Mirror of <see cref="SeedProgressFromRecent"/> for the per-series
+    /// last-watched-episode metadata. Covers two cases the per-play
+    /// <see cref="UpdateLastEpisodeAndSave"/> can't reach:
+    ///   1. Entries saved before LastEpisode* fields existed at all.
+    ///   2. Entries added to My-list AFTER the show was already being
+    ///      watched (Add creates the entry without the episode info,
+    ///      and there's no replay between Add and the next render).
+    /// Idempotent — only writes when the My-list value is empty AND
+    /// Recent has something. Saves once at the end if anything changed.
+    /// </summary>
+    /// <summary>
+    /// One-shot repair pass for MyList entries that were saved with the
+    /// EPISODE URL as their PageUrl (and the EPISODE title as their
+    /// Title) instead of the series URL / show name. Comes from a prior
+    /// version of <see cref="MainWindow.Cards.ToggleMyList_Click"/> that
+    /// passed <see cref="RecentWatch.ToVideoResult"/> straight to
+    /// <see cref="Toggle"/>; that helper returns the episode shape for
+    /// series, so MyList ended up keyed by the wrong URL and the card
+    /// showed the episode title instead of the show name.
+    ///
+    /// For each broken entry, we look it up in Recently watched by both
+    /// LastEpisodeUrl and the per-episode progress map. If we find the
+    /// owning series, we either drop the broken entry (when a correctly-
+    /// keyed entry already exists — duplicate from the buggy path) or
+    /// rekey it in place at the same index with the show's URL, title,
+    /// thumbnail, and current LastEpisode* metadata. Saves once if
+    /// anything actually changed.
+    /// </summary>
+    public void MigrateBstoEpisodeKeys(RecentlyWatched recent)
+    {
+        // Map every episode URL we know about back to its parent series
+        // RecentWatch — covers both the most-recent-episode pointer and
+        // any per-episode progress entries left from prior plays.
+        var episodeUrlToSeries = new Dictionary<string, RecentWatch>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var rw in recent.Items)
+        {
+            if (!rw.IsSeries) continue;
+            if (!string.IsNullOrEmpty(rw.LastEpisodeUrl))
+                episodeUrlToSeries[rw.LastEpisodeUrl!] = rw;
+            foreach (var key in rw.Episodes.Keys)
+                episodeUrlToSeries[key] = rw;
+        }
+        if (episodeUrlToSeries.Count == 0) return;
+
+        // Walk back-to-front so any RemoveAt doesn't shift indices we're
+        // about to use. Each pass either fixes-in-place or removes.
+        var changed = false;
+        for (var i = Items.Count - 1; i >= 0; i--)
+        {
+            var entry = Items[i];
+            if (string.IsNullOrEmpty(entry.PageUrl)) continue;
+            // Already-correct entries resolve via the standard
+            // series-URL key in Recently watched, so skip them.
+            if (recent.Find(entry.PageUrl) is not null) continue;
+            // Otherwise: does the entry's "PageUrl" actually match an
+            // episode URL we have a parent for? If yes, repair.
+            if (!episodeUrlToSeries.TryGetValue(entry.PageUrl, out var owner)) continue;
+
+            var alreadyHasCorrect = Items.Any(e =>
+                e != entry && string.Equals(
+                    e.PageUrl, owner.PageUrl, StringComparison.OrdinalIgnoreCase));
+            if (alreadyHasCorrect)
+            {
+                Items.RemoveAt(i);
+                changed = true;
+                continue;
+            }
+            // Replace at the same index so the user's ordering is
+            // preserved. PageUrl is init-only, so we have to materialise
+            // a new MyListEntry rather than mutate.
+            Items[i] = new MyListEntry
+            {
+                Title = owner.Title,
+                Source = owner.Source,
+                PageUrl = owner.PageUrl,
+                ThumbnailUrl = owner.ThumbnailUrl ?? entry.ThumbnailUrl,
+                Year = owner.Year,
+                Duration = owner.Duration,
+                PositionMs = owner.PositionMs > 0 ? owner.PositionMs : entry.PositionMs,
+                LengthMs = owner.LengthMs > 0 ? owner.LengthMs : entry.LengthMs,
+                LastEpisodeTitle = owner.LastEpisodeTitle,
+                LastSeasonNumber = owner.LastSeasonNumber,
+                LastEpisodeNumber = owner.LastEpisodeNumber,
+                AddedUtc = entry.AddedUtc,
+            };
+            changed = true;
+        }
+        if (changed) Save();
+    }
+
+    public void SeedLastEpisodeFromRecent(RecentlyWatched recent)
+    {
+        var changed = false;
+        foreach (var entry in Items)
+        {
+            var rw = recent.Find(entry.PageUrl);
+            if (rw is null || !rw.IsSeries) continue;
+            if (string.IsNullOrEmpty(entry.LastEpisodeTitle)
+                && !string.IsNullOrEmpty(rw.LastEpisodeTitle))
+            {
+                entry.LastEpisodeTitle = rw.LastEpisodeTitle;
+                changed = true;
+            }
+            if (entry.LastSeasonNumber is null && rw.LastSeasonNumber is not null)
+            {
+                entry.LastSeasonNumber = rw.LastSeasonNumber;
+                changed = true;
+            }
+            if (entry.LastEpisodeNumber is null && rw.LastEpisodeNumber is not null)
+            {
+                entry.LastEpisodeNumber = rw.LastEpisodeNumber;
+                changed = true;
+            }
+        }
+        if (changed) Save();
+    }
+
+    /// <summary>
+    /// Looks up an entry by URL, falling back to the language-toggled
+    /// URL (German ⇄ German Subbed for bs.to) when there's no direct
+    /// match. The user only ever has ONE My-list entry per show
+    /// (keyed by whichever language they added), so playback in the
+    /// other variant has to find that one entry to update progress /
+    /// last-episode metadata. Without this fallback, watching the
+    /// "wrong" language silently no-ops the My-list update and the
+    /// card freezes on the original language's data.
+    /// </summary>
+    private MyListEntry? FindByUrlOrToggled(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        var direct = Items.FirstOrDefault(i => i.PageUrl == key);
+        if (direct is not null) return direct;
+        if (!key.Contains("bs.to", StringComparison.OrdinalIgnoreCase)) return null;
+        // Match across all language variants (no-suffix / /de / /des
+        // / /en) by language-stripped URL so a watch in any variant
+        // updates the existing entry rather than creating a duplicate.
+        return Items.FirstOrDefault(i =>
+            BsToUrl.SameLanguageStripped(i.PageUrl, key));
+    }
+
+    /// <summary>
     /// In-memory-only progress update so the bound progress bar can tick
     /// alongside the player. Persistence still happens on pause / close
     /// / end via <see cref="UpdatePositionAndSave"/>.
     /// </summary>
     public void UpdatePositionInMemory(VideoResult source, long positionMs, long lengthMs)
     {
-        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
-        var existing = Items.FirstOrDefault(i => i.PageUrl == source.PageUrl);
+        // Key by RecentKey (series URL for episodes, page URL for
+        // movies) so a series episode finds its My-list entry, which
+        // is keyed by the series URL. PageUrl alone would be the
+        // episode URL — never matching the saved series URL — so the
+        // in-memory progress update silently no-op'd and the My-list
+        // progress bar stopped updating during playback. Same key
+        // semantics as Recent and MoveToTopAndSave.
+        var key = source.RecentKey;
+        if (string.IsNullOrWhiteSpace(key)) return;
+        var existing = FindByUrlOrToggled(key);
         if (existing is null) return;
         existing.PositionMs = Math.Max(0, positionMs);
         existing.LengthMs = Math.Max(0, lengthMs);
@@ -253,8 +462,10 @@ public class MyList
     /// </summary>
     public void UpdatePositionAndSave(VideoResult source, long positionMs, long lengthMs)
     {
-        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
-        var existing = Items.FirstOrDefault(i => i.PageUrl == source.PageUrl);
+        // Same RecentKey routing as UpdatePositionInMemory above.
+        var key = source.RecentKey;
+        if (string.IsNullOrWhiteSpace(key)) return;
+        var existing = FindByUrlOrToggled(key);
         if (existing is null) return;
         existing.PositionMs = Math.Max(0, positionMs);
         existing.LengthMs = Math.Max(0, lengthMs);
@@ -266,20 +477,26 @@ public class MyList
     /// re-inserts it at the top, so the list's display order reflects
     /// the most recent play (same pattern as RecentlyWatched.UpsertAndSave).
     /// No-op if the movie isn't saved (we don't auto-add on play) or if
-    /// it's already at index 0. Persists when something moved.
+    /// it's already at index 0. Persists when something moved. Uses
+    /// <see cref="VideoResult.RecentKey"/> so a series-episode VideoResult
+    /// (PageUrl = episode URL, SeriesPageUrl = series URL) finds its
+    /// My-list entry, which is keyed by the series URL — without this
+    /// the reorder for bs.to series silently no-op'd because the
+    /// episode URL never matched the saved series URL.
     /// </summary>
     public void MoveToTopAndSave(VideoResult source)
     {
-        if (string.IsNullOrWhiteSpace(source.PageUrl)) return;
-        var idx = -1;
-        for (var i = 0; i < Items.Count; i++)
-        {
-            if (Items[i].PageUrl == source.PageUrl) { idx = i; break; }
-        }
+        var key = source.RecentKey;
+        if (string.IsNullOrWhiteSpace(key)) return;
+        // Cross-language fallback: a Subbed-URL play should still
+        // float the German-keyed entry to the top (and vice versa) —
+        // the user has only one MyList entry per show.
+        var existing = FindByUrlOrToggled(key);
+        if (existing is null) return;
+        var idx = Items.IndexOf(existing);
         if (idx <= 0) return;
-        var entry = Items[idx];
         Items.RemoveAt(idx);
-        Items.Insert(0, entry);
+        Items.Insert(0, existing);
         Save();
     }
 
@@ -293,5 +510,48 @@ public class MyList
     {
         if (!el.TryGetProperty(prop, out var v)) return 0;
         return v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
+    }
+
+    private static int? NullableInt(JsonElement el, string prop)
+    {
+        if (!el.TryGetProperty(prop, out var v)) return null;
+        return v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+    }
+
+    /// <summary>
+    /// Mirrors RecentlyWatched's last-episode write into the matching
+    /// My-list entry so the My-list card subtitle stays in sync. No-op
+    /// when the source isn't a series episode (no SeriesPageUrl) or
+    /// when the series isn't saved to My-list. Persists if anything
+    /// actually changed; the IsSeries / EpisodeSubtitle observables
+    /// fire so the bound subtitle TextBlock repaints in place.
+    /// </summary>
+    public void UpdateLastEpisodeAndSave(VideoResult source)
+    {
+        // Only series episodes carry SeriesPageUrl. Movies skip — they
+        // have no "last episode" concept, and writing the movie's own
+        // title into LastEpisodeTitle would just be dead data.
+        if (string.IsNullOrEmpty(source.SeriesPageUrl)) return;
+        var key = source.RecentKey;
+        if (string.IsNullOrWhiteSpace(key)) return;
+        var existing = FindByUrlOrToggled(key);
+        if (existing is null) return;
+        var changed = false;
+        if (existing.LastEpisodeTitle != source.Title)
+        {
+            existing.LastEpisodeTitle = source.Title;
+            changed = true;
+        }
+        if (existing.LastSeasonNumber != source.SeasonNumber)
+        {
+            existing.LastSeasonNumber = source.SeasonNumber;
+            changed = true;
+        }
+        if (existing.LastEpisodeNumber != source.EpisodeNumber)
+        {
+            existing.LastEpisodeNumber = source.EpisodeNumber;
+            changed = true;
+        }
+        if (changed) Save();
     }
 }

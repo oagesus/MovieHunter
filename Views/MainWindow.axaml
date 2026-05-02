@@ -4,6 +4,7 @@
         xmlns:models="using:MovieHunter.Models"
         xmlns:services="using:MovieHunter.Services"
         xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+        xmlns:webview="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.WebView"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="780"
@@ -121,6 +122,32 @@
                          ToggleButton.transport:pointerover">
             <Setter Property="RenderTransform" Value="scale(1.3)"/>
         </Style>
+        <!-- Sticky hover scale while a hover popup is up. The
+             corresponding button (Mute / Episodes / NextEpisode)
+             gets a `.popup-open` class added in code when its
+             popup opens and removed when it closes. Without this,
+             moving the pointer from the button into the popup
+             body would drop the :pointerover state on the button
+             and the icon would visually deflate to its idle size
+             even though the popup it triggered is still showing. -->
+        <Style Selector="Button.transport.popup-open,
+                         ToggleButton.transport.popup-open">
+            <Setter Property="RenderTransform" Value="scale(1.3)"/>
+        </Style>
+        <!-- Disabled transport button (currently only NextEpisodeBtn at
+             the very last episode of the very last season) — drop the
+             whole content presenter to ~30% so the icon reads as
+             unavailable, and switch the inner icon's cursor back to the
+             arrow so the hover affordance doesn't lie about the
+             button being clickable. -->
+        <Style Selector="Button.transport:disabled /template/ ContentPresenter,
+                         ToggleButton.transport:disabled /template/ ContentPresenter">
+            <Setter Property="Opacity" Value="0.3"/>
+        </Style>
+        <Style Selector="Button.transport:disabled Border.transport-icon,
+                         ToggleButton.transport:disabled Border.transport-icon">
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
         <Style Selector="TextBlock.time">
             <Setter Property="FontFamily" Value="JetBrains Mono, Cascadia Code, Consolas, Menlo, monospace"/>
             <Setter Property="FontSize" Value="12"/>
@@ -212,9 +239,12 @@
             <Setter Property="Stroke" Value="{DynamicResource SystemAccentColorBrush}"/>
         </Style>
 
-        <!-- Search-result rows: 10px corner radius, surface-2 fill on
-             hover, accent-soft fill when selected. Matches the design
-             system's .mh-result-row spec. -->
+        <!-- Search-result rows: 10px corner radius, semi-transparent
+             gray fill on hover/press to match the row-hover gray used
+             across the episode list, season dropdown, and Settings
+             checkboxes — all "list" surfaces in the app share the
+             same Netflix-style flat hover instead of each using a
+             different theme-tinted brush. -->
         <Style Selector="ListBox.results ListBoxItem">
             <!-- 8px L/T/B + 16px right so the action buttons sit clear of
                  the 10px overlay scrollbar (with 6px breathing room). -->
@@ -226,7 +256,37 @@
             <Setter Property="CornerRadius" Value="10"/>
         </Style>
         <Style Selector="ListBox.results ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="Background" Value="#33808080"/>
+        </Style>
+        <Style Selector="ListBox.results ListBoxItem:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#44808080"/>
+        </Style>
+        <Style Selector="ListBox.results ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="#33808080"/>
+        </Style>
+        <Style Selector="ListBox.results ListBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#44808080"/>
+        </Style>
+        <!-- Currently-playing search-result row. Same accent fill the
+             episode picker uses for the row of the actively-playing
+             episode, so the user can spot what they're watching at a
+             glance across all surfaces. The Border-based highlight
+             paints a layer on top of the ListBoxItem's own hover /
+             pressed / selected backgrounds, so it dominates regardless
+             of which other state the row is in. Default and active
+             backgrounds are BOTH driven via styles — an inline
+             Background on the Border would override the .is-playing
+             style setter (local value > style). -->
+        <Style Selector="Border.search-row">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.search-row.is-playing">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <!-- Hover variant: darken to Dark1 so the row feedback matches
+             the in-popup episode rows + sources-panel checkboxes. -->
+        <Style Selector="Border.search-row.is-playing:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
         </Style>
 
         <!-- Sidebar nav-rail buttons: 44×44, fully transparent, no hover
@@ -348,9 +408,56 @@
             <Setter Property="BorderThickness" Value="2"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
         </Style>
-        <!-- Pointer-over swap is handled in code-behind (Poster_PointerEntered /
-             Poster_PointerExited) — descendant selectors don't reliably
-             reach into ItemTemplate content. -->
+        <!-- Card hover overlay (border accent + scrim + playing badge)
+             driven by Avalonia's :pointerover pseudo-class on the outer
+             recent-card Button. This is the framework's native hover
+             state, which respects pointer-capture transfers — clicking
+             an inner chip keeps :pointerover true on the parent because
+             the cursor is still geometrically inside the card. The
+             previous code-behind PointerEntered/PointerExited approach
+             stripped the overlay synchronously when an inner chip took
+             pointer capture, since Avalonia fires PointerExited on the
+             outer button at that moment. Pseudo-classes don't have
+             that issue. Code-behind just toggles .is-active and
+             .actually-playing for the playback state side of things. -->
+        <Style Selector="Button.recent-card:pointerover Border.poster">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <Style Selector="Button.recent-card.is-active Border.poster">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+        <Style Selector="Border.playing-scrim">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="Button.recent-card:pointerover Border.playing-scrim">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="Button.recent-card.is-active Border.playing-scrim">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="TextBlock.playing-badge">
+            <Setter Property="IsVisible" Value="False"/>
+            <Setter Property="Text" Value="Continue playing"/>
+        </Style>
+        <Style Selector="Button.recent-card:pointerover TextBlock.playing-badge">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="Button.recent-card.is-active TextBlock.playing-badge">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <!-- Cards with no saved progress (Classes.not-started bound from
+             RecentWatch / MyListEntry IsStarted) get "Start playing"
+             instead of the default "Continue playing". Declared BEFORE
+             the actually-playing override below so a card that's both
+             not-started and currently playing still wins with
+             "Currently playing" — last-declared style wins on equal
+             specificity. -->
+        <Style Selector="Button.recent-card.not-started TextBlock.playing-badge">
+            <Setter Property="Text" Value="Start playing"/>
+        </Style>
+        <Style Selector="Button.recent-card.actually-playing TextBlock.playing-badge">
+            <Setter Property="Text" Value="Currently playing"/>
+        </Style>
 
         <!-- Custom title-bar caption buttons. Transparent by default so
              they inherit the title-bar background; hover highlights with a
@@ -401,6 +508,281 @@
         </Style>
         <Style Selector="Button.back:pointerover">
             <Setter Property="RenderTransform" Value="scale(1.3)"/>
+        </Style>
+
+        <!-- Episode-picker row: Netflix-style flat hover. No scale
+             transform — just a subtle background tint on pointerover.
+             Hard-coded #22808080 / #33808080 (semi-transparent gray)
+             instead of AccentSoftBrush because that brush resolves
+             to the same color as the popup card surface in some
+             themes (Dracula's AccentSoftBrush == Quaternary), making
+             the hover paint invisibly. The gray multiplier is theme-
+             agnostic — visible against both light and dark cards. -->
+        <Style Selector="Button.episode-row">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.episode-row /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="0"/>
+        </Style>
+        <Style Selector="Button.episode-row:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#33808080"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.episode-row:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#44808080"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <!-- Override the FluentTheme's :pressed scale(0.98) on the
+             Button itself, so the row's background stays full width
+             on click (otherwise it shrinks inward and leaves gaps at
+             the popup card edges). The same scale is then applied
+             to the inner Grid via the .episode-content class below
+             — so the press feedback (text + progress bar visibly
+             compressing) is preserved, just decoupled from the
+             background that paints the row. -->
+        <Style Selector="Button.episode-row:pressed">
+            <Setter Property="RenderTransform" Value="none"/>
+        </Style>
+        <Style Selector="Grid.episode-content">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+        </Style>
+        <Style Selector="Button.episode-row:pressed Grid.episode-content">
+            <Setter Property="RenderTransform" Value="scale(0.98)"/>
+        </Style>
+        <!-- Currently-playing episode (toggled via Classes.playing-now
+             from the EpisodeRow.IsPlayingNow binding). Filled with the
+             theme accent so the active row reads as selected, mirroring
+             how the open season dropdown highlights the active season.
+             :pointerover and :pressed overrides keep the row selectable
+             without losing the highlight on hover/click. -->
+        <Style Selector="Button.episode-row.playing-now /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.episode-row.playing-now:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.episode-row.playing-now:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark2Brush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <!-- Progress bar inside the playing-now row needs to flip away
+             from the accent fill (SystemAccentColorBrush) since the row
+             background is now also that brush — they'd merge. White
+             reads against any theme's accent. The track stays its
+             default faint gray; only the indicator fill changes. -->
+        <Style Selector="Button.episode-row.playing-now ProgressBar.recent-progress">
+            <Setter Property="Foreground" Value="#FFFFFFFF"/>
+            <Setter Property="Background" Value="#33FFFFFF"/>
+        </Style>
+        <!-- Unavailable episode (toggled via Classes.unavailable from
+             the EpisodeRow.IsAvailable binding — bs.to greys out
+             episodes whose hoster cell is empty for the loaded
+             language). Dim the entire row and switch the cursor to
+             default so the user has both visual + cursor feedback
+             that the row isn't clickable. IsEnabled=false on the
+             Button (set in the ItemTemplate) prevents the click. -->
+        <Style Selector="Button.episode-row.unavailable">
+            <Setter Property="Cursor" Value="Arrow"/>
+            <Setter Property="Opacity" Value="0.4"/>
+        </Style>
+        <Style Selector="Button.episode-row.unavailable /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <!-- Right-pointing season-arrow on the in-player Episodes
+             popup season list. Hidden by default; only the hovered
+             row shows it as a "drill in to this season's episodes"
+             cue. Scoped to .season-arrow so the popup-header back
+             arrow (a sibling Button.episode-row in the same popup)
+             stays always-visible. -->
+        <Style Selector="Viewbox.season-arrow">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="Button.episode-row:pointerover Viewbox.season-arrow">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <!-- Active season's row gets the .playing-now accent fill;
+             the default theme-foreground stroke loses contrast on
+             that background, so swap to white — same idea as the
+             ProgressBar.recent-progress override above. -->
+        <Style Selector="Button.episode-row.playing-now Viewbox.season-arrow Path">
+            <Setter Property="Stroke" Value="#FFFFFFFF"/>
+        </Style>
+
+        <!-- Season ComboBox styling. Hand cursor on the ComboBox
+             itself (the dropdown button) and on every dropdown item.
+             Press scale fully disabled so neither the row background
+             nor the row content shrinks on click — the hover/selected
+             color flips are enough click feedback. ScrollViewer right
+             padding stops item hover from running under the scrollbar.
+             Scoped to .season-dropdown so other ComboBoxes elsewhere
+             keep their default behavior. -->
+        <Style Selector="ComboBox.season-dropdown">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem:pressed">
+            <Setter Property="RenderTransform" Value="none"/>
+        </Style>
+        <!-- Pin every interactive state on the closed dropdown button to
+             the idle Background / BorderBrush so neither hover, press,
+             nor dropdown-open paints a visible color shift. The chevron
+             rotation + the popup itself are the only feedback the user
+             needs that the button is interactive. The FluentTheme
+             template's per-state styles overwrite Border#Background
+             directly with ComboBoxBackground{PointerOver,Pressed}
+             resources, so each state has to be overridden on the same
+             template part — setting Background on the ComboBox itself
+             wouldn't reach it. Scoped to .season-dropdown so other
+             ComboBoxes keep their default state feedback; doesn't touch
+             the open-dropdown items (those are styled below). -->
+        <!-- Idle background: match the open popup so the button and
+             popup read as the same surface — Quarternary fill on both,
+             same border brush. Without this the button defaults to
+             FluentTheme's ComboBoxBackground, which is a different
+             grey from the popup's Quarternary. -->
+        <Style Selector="ComboBox.season-dropdown /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown:pointerover /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxBorderBrush}"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown:pressed /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxBorderBrush}"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown:dropdownopen /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxBorderBrush}"/>
+        </Style>
+
+        <!-- Open dropdown item palette — mirror Button.episode-row in the
+             in-video Episodes popup so both lists feel like the same
+             control: transparent idle, gray-tint hover (#33808080),
+             slightly darker press (#44808080), and accent fill for the
+             currently-selected season (matching Button.episode-row.playing-now).
+             Targets PART_ContentPresenter via the FluentTheme's
+             /template/ ContentPresenter selector pattern; CornerRadius=0
+             so the row tint paints flush to the popup edges. -->
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="0"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#33808080"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#44808080"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown ComboBoxItem:selected:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark2Brush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <!-- Right-padding for the scrollbar lane applied conditionally
+             via the .has-many class — toggled in code-behind from
+             OpenEpisodePicker once the season count is known. With
+             few seasons (no scrollbar) the class is absent and items
+             stretch full width; with many seasons (scrollbar shows)
+             the class adds the 14 px right padding so item hover
+             stops at the scrollbar's left edge. -->
+        <Style Selector="ComboBox.season-dropdown.has-many /template/ ScrollViewer">
+            <Setter Property="Padding" Value="0,0,14,0"/>
+        </Style>
+        <!-- Open dropdown is wider than the closed button (gives the
+             "Season N (M Episodes)" line enough room) and right-edge-
+             aligned to the button so it grows leftward Netflix-style
+             instead of overflowing past the popup card on the right.
+             The FluentTheme template binds Popup.MinWidth to the
+             ComboBox's bounds width; this override breaks that so the
+             popup expands while the button stays compact. -->
+        <Style Selector="ComboBox.season-dropdown /template/ Popup#PART_Popup">
+            <Setter Property="Placement" Value="BottomEdgeAlignedRight"/>
+        </Style>
+        <!-- The Popup's own MinWidth is locked via local-value binding
+             to ComboBox.Bounds.Width in the FluentTheme template, so
+             setting MinWidth on PART_Popup is overridden by the
+             template binding. The inner PopupBorder has no such local
+             value, so MinWidth here forces the popup to expand around
+             it. 200 px is enough for "Season 10 (28 Episodes)" plus
+             the 14 px scrollbar lane and the border's own padding,
+             without the dropdown looking unnecessarily wide. Background
+             + BorderBrush match the in-video Episodes popup card so the
+             two surfaces feel like the same control — FluentTheme's
+             default ComboBoxDropDownBackground is a lighter Mica /
+             AcrylicBackground brush that doesn't blend with the modal. -->
+        <Style Selector="ComboBox.season-dropdown /template/ Border#PopupBorder">
+            <Setter Property="MinWidth" Value="180"/>
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"/>
+            <!-- The episode-picker modal card behind the popup uses the
+                 same Quarternary fill, so the popup needs an explicit
+                 stroke to read as a separate surface — the FluentTheme
+                 default ComboBoxDropdownBorderThickness is 0 (it relies
+                 on a system shadow, but Avalonia's Popup host clips
+                 BoxShadow). Match the closed dropdown button's stroke
+                 (brush + thickness) so the open popup reads as a
+                 natural extension of the button — ComboBoxBorderBrush
+                 is the FluentTheme brush that paints the button's
+                 visible outline, and 1 px is the FluentTheme's default
+                 ComboBox BorderThickness. -->
+            <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Settings-panel CheckBox: row-level hover background is
+             transparent so the surrounding label area doesn't paint
+             a gray fill on hover. Only the indicator (NormalRectangle
+             in the FluentTheme template) responds to hover, and it
+             does so with the same fill + colour-shift treatment the
+             search input fields use elsewhere — secondary fill idle,
+             tertiary fill on :pointerover, transparent border in
+             both states. Scoped to SourcesFlyoutPanel so other
+             CheckBoxes elsewhere keep their default theme styling. -->
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox:pointerover /template/ Border#PART_Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox:pressed /template/ Border#PART_Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <!-- Indicator box (the small square left of the label).
+             Mirrors TextBox.search-input's idle / :pointerover fill so
+             the visual language matches. The selector drops the type
+             prefix on #NormalRectangle so it matches whatever element
+             the FluentTheme template uses (Border / Grid / Rectangle —
+             the name is what's stable across Avalonia versions).
+             BorderThickness=0 collapses the indicator's outline so
+             the unchecked state reads as a flat filled square,
+             matching the search input. -->
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox:pointerover /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox:pressed /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
         </Style>
 
         <!-- Search bar input fields: pill shape, subtle tinted fill, no
@@ -622,6 +1004,43 @@
                                    Maximum="{TemplateBinding Maximum}"
                                    Value="{TemplateBinding Value, Mode=TwoWay}"
                                    ViewportSize="{TemplateBinding ViewportSize}">
+                                <!-- PART_-named decrease/increase buttons must
+                                     be present for Avalonia's ScrollBar to
+                                     wire its internal logic correctly — without
+                                     these the Track does NOT re-position its
+                                     Thumb when Value changes externally (which
+                                     is what happens on mouse wheel scroll, the
+                                     ScrollViewer changes Offset → ScrollBar
+                                     Value → expected to flow to Track Value).
+                                     Drag works because that path goes
+                                     Track-direct, not via Value-change events.
+                                     Hidden via a no-op template (transparent
+                                     Border, no chrome) so the visual lane is
+                                     unchanged. -->
+                                <Track.DecreaseButton>
+                                    <RepeatButton Name="PART_PageUpButton"
+                                                  Background="Transparent"
+                                                  Focusable="False"
+                                                  IsTabStop="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate>
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseButton>
+                                <Track.IncreaseButton>
+                                    <RepeatButton Name="PART_PageDownButton"
+                                                  Background="Transparent"
+                                                  Focusable="False"
+                                                  IsTabStop="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate>
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseButton>
                                 <Track.Thumb>
                                     <Thumb Margin="4,0" MinHeight="24" Opacity="0.75">
                                         <Thumb.Template>
@@ -672,6 +1091,105 @@
                     </Border>
                 </ControlTemplate>
             </Setter>
+        </Style>
+
+        <!-- ─────────────────────────────────────────────────────────
+             Currently-playing search-row icon overrides. Placed at
+             the very end of Window.Styles so they're declared AFTER
+             every Button.result-action / Button.result-action:pointerover
+             rule above and reliably win the cascade for matching
+             elements. Using a simple two-segment selector (parent
+             class → Path) instead of routing through Button.result-
+             action since the inner Button's hover styles don't
+             propagate into matching Paths reliably across templates;
+             the simpler descendant chain matches the visual tree
+             directly. White stroke / fill flip handles every icon
+             (plus, saved-check, chevron, open-source, play triangle).
+             ───────────────────────────────────────────────────────── -->
+        <Style Selector="Border.search-row.is-playing Path">
+            <Setter Property="Stroke" Value="White"/>
+        </Style>
+        <Style Selector="Border.search-row.is-playing Path.filled">
+            <Setter Property="Stroke" Value="Transparent"/>
+            <Setter Property="Fill" Value="White"/>
+        </Style>
+        <!-- Last-watched episode progress bar inside a playing-now
+             search row: the row background is the accent brush, so the
+             default accent-foreground progress fill would merge with
+             it. Same swap the episode-modal list uses for its active
+             row — white indicator over a faint-white track so the
+             progress reads against the accent backdrop. -->
+        <Style Selector="Border.search-row.is-playing ProgressBar.recent-progress">
+            <Setter Property="Foreground" Value="#FFFFFFFF"/>
+            <Setter Property="Background" Value="#33FFFFFF"/>
+        </Style>
+
+        <!-- Season ComboBox in the episode-picker modal: rotate the
+             dropdown chevron 180° when the popup is open so the icon
+             reads as "expanded → collapse". Avalonia's FluentTheme
+             ComboBox doesn't ship this animation; the :dropdownopen
+             pseudo-class is set by ComboBox.cs whenever IsDropDownOpen
+             flips. RenderTransformOrigin keeps the rotation centered
+             on the icon's middle. The transitions block animates the
+             rotation smoothly in both directions. -->
+        <Style Selector="ComboBox.season-dropdown /template/ PathIcon#DropDownGlyph">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+            <Setter Property="RenderTransform" Value="rotate(0deg)"/>
+            <!-- Linear rotation, mid-range duration. 170 ms reads as
+                 deliberate without feeling slow; LinearEasing avoids
+                 the "snap then settle" feel of an ease-out curve and
+                 gives a constant rotation speed instead. -->
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.17"
+                                                   Easing="LinearEasing"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ComboBox.season-dropdown:dropdownopen /template/ PathIcon#DropDownGlyph">
+            <Setter Property="RenderTransform" Value="rotate(180deg)"/>
+        </Style>
+
+        <!-- Search-row chevron rotation — same animation as the season-
+             dropdown above (LinearEasing, 170 ms) so the two feel
+             consistent. ComboBox has a built-in :dropdownopen pseudo-
+             class, but the episode picker is a custom modal overlay,
+             so we bind a plain .is-open class to a VideoResult-level
+             flag (IsEpisodesPopupOpen) toggled by OpenEpisodes_Click /
+             CloseEpisodePicker. Targets the inner Path of the chevron
+             Button so the click hit-testing on the Button itself is
+             unaffected. -->
+        <Style Selector="Button.episodes-chevron Path">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+            <Setter Property="RenderTransform" Value="rotate(0deg)"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.17"
+                                                   Easing="LinearEasing"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.episodes-chevron.is-open Path">
+            <Setter Property="RenderTransform" Value="rotate(180deg)"/>
+        </Style>
+
+        <!-- Settings-panel CheckBox: checked-state hover / press feedback.
+             Resource shadowing (StackPanel.Resources on SourcesFlyoutPanel)
+             worked for the unchecked indicator's fill but didn't reach
+             the FluentTheme ControlTheme's :checked:pointerover style,
+             so we override the Background + BorderBrush directly via
+             Style selectors instead. Placed at the very end of
+             Window.Styles so the cascade puts these last (= wins
+             against the ControlTheme's ^:checked:pointerover rules). -->
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox:checked:pointerover /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorDark1Brush}"/>
+        </Style>
+        <Style Selector="StackPanel#SourcesFlyoutPanel CheckBox:checked:pressed /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark2Brush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorDark2Brush}"/>
         </Style>
     </Window.Styles>
 
@@ -917,6 +1435,24 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="models:VideoResult">
+                            <!-- Outer Border wraps the row content so the
+                                 "currently playing" highlight (.is-playing
+                                 class, bound to the data context) can paint
+                                 a full-width accent fill behind the row.
+                                 Negative Margin cancels the ListBoxItem's
+                                 8/8/16/8 padding; matching Padding inside
+                                 restores the visual content position so
+                                 the actual layout is unchanged. CornerRadius
+                                 matches the ListBoxItem's so the highlight
+                                 fills cleanly. Background is driven entirely
+                                 by Border.search-row* styles below; an
+                                 inline Background here would beat the
+                                 .is-playing setter (local value > style). -->
+                            <Border Classes="search-row"
+                                    Classes.is-playing="{Binding IsCurrentlyPlaying}"
+                                    Margin="-8,-8,-16,-8"
+                                    Padding="8,8,16,8"
+                                    CornerRadius="10">
                             <Grid Margin="1" ColumnDefinitions="Auto,*,Auto">
                                 <!-- Poster from hdfilme (2:3 aspect). -->
                                 <Border Grid.Column="0" Width="60" Height="90"
@@ -940,12 +1476,48 @@
                                                Classes="result-meta"
                                                FontSize="11"/>
                                 </StackPanel>
+                                <!-- Last-watched episode subtitle for series the
+                                     user has resumed before. Pinned to the
+                                     bottom of the row (separate Grid.Column=1
+                                     child, not part of the centered StackPanel)
+                                     so the title / source / meta line above
+                                     stay vertically centered regardless of
+                                     whether this label is present. Hidden via
+                                     HasLastWatchedEpisode on movies and on
+                                     never-watched series. Same FontSize +
+                                     result-meta class as the Source line so
+                                     the two read as the same metadata register.
+                                     The progress bar to the right is the same
+                                     recent-progress style used by the episode-
+                                     modal list — bound to the live last-watch
+                                     fraction so the user sees how far through
+                                     the episode they got at a glance. -->
+                                <Grid Grid.Column="1"
+                                      VerticalAlignment="Bottom"
+                                      ColumnDefinitions="Auto,Auto,*"
+                                      IsVisible="{Binding HasLastWatchedEpisode}">
+                                    <ProgressBar Grid.Column="0"
+                                                 Classes="recent-progress"
+                                                 Value="{Binding LastWatchedEpisodeProgress, Mode=OneWay}"
+                                                 Maximum="1"
+                                                 Width="64"
+                                                 Height="3"
+                                                 CornerRadius="2"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding LastWatchedEpisodeLabel}"
+                                               Classes="result-meta"
+                                               FontSize="11"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"
+                                               Margin="10,0,0,0"/>
+                                </Grid>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal"
                                             Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
                                     <Button Classes="result-action"
                                             Tag="{Binding}"
                                             Click="PlayResult_Click"
-                                            ToolTip.Tip="Play this result (Enter)"
+                                            ToolTip.Tip="Play"
                                             Width="40" Height="40" Padding="0"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center">
@@ -966,7 +1538,7 @@
                                     <Button Classes="result-action"
                                             Tag="{Binding}"
                                             Click="ToggleMyList_Click"
-                                            ToolTip.Tip="Add to My List"
+                                            ToolTip.Tip="{Binding MyListTooltip}"
                                             Width="40" Height="40" Padding="0"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center">
@@ -983,8 +1555,18 @@
                                             <Viewbox Width="22" Height="22"
                                                      IsVisible="{Binding IsInMyList}">
                                                 <Grid Width="24" Height="24">
+                                                    <!-- Stroke handled by the
+                                                         Button.result-action Path
+                                                         and :pointerover styles —
+                                                         identical to plus / play /
+                                                         chevron / open-source
+                                                         icons (default = theme
+                                                         foreground, hover = accent).
+                                                         No class needed; the
+                                                         .is-playing override
+                                                         further down matches every
+                                                         Path in the row anyway. -->
                                                     <Path Data="M 4 12.5 L 9 17.5 L 20 6.5"
-                                                          Stroke="{DynamicResource SystemAccentColorBrush}"
                                                           StrokeThickness="2"
                                                           StrokeLineCap="Round" StrokeJoin="Round"
                                                           Fill="Transparent"/>
@@ -992,10 +1574,36 @@
                                             </Viewbox>
                                         </Grid>
                                     </Button>
+                                    <!-- Episode picker chip — series only. Mirrors the
+                                         poster-card chevron, sized to match the other
+                                         result-action buttons. The episodes-chevron class
+                                         + .is-open binding drives the 180° chevron rotation
+                                         when the picker modal is open for THIS row (same
+                                         pattern as the season-dropdown ComboBox rotation;
+                                         IsEpisodesPopupOpen is set in OpenEpisodes_Click
+                                         and cleared in CloseEpisodePicker). -->
+                                    <Button Classes="result-action episodes-chevron"
+                                            Classes.is-open="{Binding IsEpisodesPopupOpen}"
+                                            Tag="{Binding}"
+                                            Click="OpenEpisodes_Click"
+                                            ToolTip.Tip="Show episodes"
+                                            IsVisible="{Binding IsSeries}"
+                                            Width="40" Height="40" Padding="0"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center">
+                                        <Viewbox Width="22" Height="22">
+                                            <Grid Width="24" Height="24">
+                                                <Path Data="M 6 9 l 6 6 l 6 -6"
+                                                      StrokeThickness="2"
+                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                      Fill="Transparent"/>
+                                            </Grid>
+                                        </Viewbox>
+                                    </Button>
                                     <Button Classes="result-action"
                                             Tag="{Binding}"
                                             Click="OpenSource_Click"
-                                            ToolTip.Tip="Open source page in browser (Enter)"
+                                            ToolTip.Tip="Open source in browser"
                                             Width="40" Height="40" Padding="0"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center">
@@ -1010,6 +1618,7 @@
                                     </Button>
                                 </StackPanel>
                             </Grid>
+                            </Border>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -1340,7 +1949,7 @@
                                                VerticalAlignment="Center"/>
                                 </Grid>
                                 <Grid Grid.Row="1"
-                                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+                                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto">
                                     <Button Grid.Column="0" Classes="transport"
                                             Click="PlayPause_Click"
                                             Focusable="False" IsTabStop="False">
@@ -1423,15 +2032,20 @@
                                            Placement="Top"
                                            VerticalOffset="-8"
                                            IsLightDismissEnabled="False">
-                                        <Border Background="{DynamicResource ToolTipBackground}"
-                                                CornerRadius="6"
+                                        <Border Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                BoxShadow="0 6 24 0 #66000000"
                                                 Padding="4"
                                                 PointerEntered="VolumePopupContent_PointerEntered"
-                                                PointerExited="VolumePopupContent_PointerExited">
+                                                PointerExited="VolumePopupContent_PointerExited"
+                                                PointerPressed="VolumePopupContent_PointerPressed"
+                                                Tapped="VolumePopupContent_Tapped"
+                                                DoubleTapped="VolumePopupContent_Tapped">
                                             <StackPanel HorizontalAlignment="Center" Spacing="4">
                                                 <TextBlock x:Name="VolumePopupText"
                                                            Text="100%"
-                                                           Foreground="{DynamicResource ToolTipForeground}"
                                                            FontSize="12"
                                                            FontWeight="SemiBold"
                                                            HorizontalAlignment="Center"/>
@@ -1445,13 +2059,375 @@
                                             </StackPanel>
                                         </Border>
                                     </Popup>
+                                    <!-- Next-episode button — series only, sits
+                                         immediately left of the Episodes icon.
+                                         Lucide skip-forward (outlined play
+                                         triangle + vertical bar). Click pauses
+                                         current playback and opens the captcha
+                                         overlay for the next episode in the
+                                         series's season list (next ep in this
+                                         season → first ep of next season →
+                                         disabled when there's neither, i.e.
+                                         the very last episode). Disabled state
+                                         dims the icon via the .transport
+                                         disabled style block. Visibility is
+                                         gated on series episode the same way
+                                         EpisodesBtn is, in OnPlayRequested. -->
+                                    <Button Grid.Column="5" x:Name="NextEpisodeBtn"
+                                            Classes="transport"
+                                            IsVisible="False"
+                                            IsEnabled="False"
+                                            Margin="2,0,0,0"
+                                            Focusable="False" IsTabStop="False"
+                                            Click="NextEpisode_Click"
+                                            PointerEntered="NextEpisodeBtn_PointerEntered"
+                                            PointerExited="NextEpisodeBtn_PointerExited">
+                                        <Border Classes="transport-icon">
+                                            <Viewbox Width="26" Height="26">
+                                                <Grid Width="24" Height="24">
+                                                    <Path Data="M 5 4 L 15 12 L 5 20 Z M 19 5 V 19"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
+                                            </Viewbox>
+                                        </Border>
+                                    </Button>
+                                    <!-- Next-episode hover popup. Same hover
+                                         pattern + chrome as the Episodes
+                                         popup so the two read as siblings:
+                                         single Quarternary fill, 1 px
+                                         border stroke, fixed 320 width.
+                                         The popup body is itself a
+                                         Button.episode-row, so the user
+                                         can click anywhere inside (not
+                                         just the icon) to advance to the
+                                         next episode AND it picks up the
+                                         shared row hover tint + Hand
+                                         cursor + pressed feedback for
+                                         free. -->
+                                    <Popup Grid.Column="5" x:Name="NextEpisodePopup"
+                                           PlacementTarget="{Binding #NextEpisodeBtn}"
+                                           Placement="Top"
+                                           VerticalOffset="-8"
+                                           IsLightDismissEnabled="False">
+                                        <Border Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                BoxShadow="0 6 24 0 #66000000"
+                                                Width="320"
+                                                ClipToBounds="True"
+                                                PointerEntered="NextEpisodePopupContent_PointerEntered"
+                                                PointerExited="NextEpisodePopupContent_PointerExited"
+                                                PointerPressed="NextEpisodePopupContent_PointerPressed"
+                                                Tapped="NextEpisodePopupContent_Tapped"
+                                                DoubleTapped="NextEpisodePopupContent_Tapped">
+                                            <Button Classes="episode-row"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Padding="14,12"
+                                                    Focusable="False" IsTabStop="False"
+                                                    Click="NextEpisode_Click">
+                                                <Grid Classes="episode-content">
+                                                    <StackPanel Spacing="2">
+                                                        <!-- Header — same FontSize +
+                                                             FontWeight as the EpisodesPopup
+                                                             season label. -->
+                                                        <TextBlock Text="Next episode"
+                                                                   FontSize="16"
+                                                                   FontWeight="SemiBold"/>
+                                                        <!-- "S__E__ · Episode title" —
+                                                             same FontSize + FontWeight
+                                                             + dim level as the
+                                                             EpisodesPopup episode rows.
+                                                             Wraps when the title is too
+                                                             long for one line. Filled
+                                                             by UpdateNextEpisodeButtonState. -->
+                                                        <TextBlock x:Name="NextEpisodeSubtitle"
+                                                                   Text=""
+                                                                   FontSize="13"
+                                                                   FontWeight="SemiBold"
+                                                                   Opacity="0.65"
+                                                                   TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Button>
+                                        </Border>
+                                    </Popup>
+                                    <!-- Episodes button — series only. Hover-to-open
+                                         popup with the season's episode list, plus
+                                         a back arrow that flips the popup to a
+                                         season list. Visibility is gated on the
+                                         active video being a series episode (see
+                                         OnPlayRequested + Back_Click). Three-
+                                         square stacked icon mirrors Netflix's
+                                         in-player episodes affordance. -->
+                                    <Button Grid.Column="6" x:Name="EpisodesBtn"
+                                            Classes="transport"
+                                            IsVisible="False"
+                                            Focusable="False" IsTabStop="False"
+                                            PointerEntered="EpisodesBtn_PointerEntered"
+                                            PointerExited="EpisodesBtn_PointerExited">
+                                        <Border Classes="transport-icon">
+                                            <Viewbox Width="26" Height="26">
+                                                <Grid Width="24" Height="24">
+                                                    <!-- Main rounded rect (front frame). -->
+                                                    <Path Data="M 5 8 H 15 A 2 2 0 0 1 17 10 V 17 A 2 2 0 0 1 15 19 H 5 A 2 2 0 0 1 3 17 V 10 A 2 2 0 0 1 5 8 Z"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                    <!-- Open path: visible portion of an
+                                                         offset rect behind the main one
+                                                         (top + right peeking out, no
+                                                         bottom-left edges drawn). -->
+                                                    <Path Data="M 7 8 V 6 A 2 2 0 0 1 9 4 H 19 A 2 2 0 0 1 21 6 V 15 A 2 2 0 0 1 19 17 H 17"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Fill="Transparent"/>
+                                                </Grid>
+                                            </Viewbox>
+                                        </Border>
+                                    </Button>
+                                    <!-- Episodes popup. Opens on Episodes-button
+                                         hover (matches the Mute → VolumePopup
+                                         pattern). Two views stacked at the same
+                                         Grid cell — Episode list (default) and
+                                         Season list (when the back arrow is
+                                         clicked). The whole thing closes on
+                                         pointer-out via _episodesPopupHideTimer. -->
+                                    <Popup Grid.Column="6" x:Name="EpisodesPopup"
+                                           PlacementTarget="{Binding #EpisodesBtn}"
+                                           Placement="Top"
+                                           VerticalOffset="-8"
+                                           IsLightDismissEnabled="False">
+                                        <Border x:Name="EpisodesPopupBorder"
+                                                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                BoxShadow="0 6 24 0 #66000000"
+                                                Width="320"
+                                                Height="380"
+                                                ClipToBounds="True"
+                                                PointerEntered="EpisodesPopupContent_PointerEntered"
+                                                PointerExited="EpisodesPopupContent_PointerExited"
+                                                PointerPressed="EpisodesPopupContent_PointerPressed"
+                                                Tapped="EpisodesPopupContent_Tapped"
+                                                DoubleTapped="EpisodesPopupContent_Tapped">
+                                            <Grid>
+                                                <!-- Loading spinner: covers the whole popup
+                                                     while a series fetch is in flight and
+                                                     no episodes are cached yet. Same path
+                                                     data + stroke as the bs.to captcha
+                                                     spinner (and the search-result
+                                                     spinner) so the visual matches across
+                                                     loading states throughout the app.
+                                                     Class-gated like the captcha spinner —
+                                                     INFINITE animations leak invalidations
+                                                     when the parent is hidden, so the
+                                                     .spinning class only goes on while the
+                                                     spinner is actually visible. -->
+                                                <Grid x:Name="EpisodesPopupLoadingSpinner"
+                                                      IsVisible="False"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center">
+                                                    <Viewbox Width="48" Height="48">
+                                                        <Grid Width="24" Height="24"
+                                                              x:Name="EpisodesPopupSpinnerPath"
+                                                              RenderTransformOrigin="50%,50%">
+                                                            <Grid.Styles>
+                                                                <Style Selector="Grid#EpisodesPopupSpinnerPath.spinning">
+                                                                    <Style.Animations>
+                                                                        <Animation Duration="0:0:1"
+                                                                                   IterationCount="INFINITE">
+                                                                            <KeyFrame Cue="0%">
+                                                                                <Setter Property="RotateTransform.Angle" Value="0"/>
+                                                                            </KeyFrame>
+                                                                            <KeyFrame Cue="100%">
+                                                                                <Setter Property="RotateTransform.Angle" Value="360"/>
+                                                                            </KeyFrame>
+                                                                        </Animation>
+                                                                    </Style.Animations>
+                                                                </Style>
+                                                            </Grid.Styles>
+                                                            <Grid.RenderTransform>
+                                                                <RotateTransform/>
+                                                            </Grid.RenderTransform>
+                                                            <Path Data="M 21 12 a 9 9 0 1 1 -6.219 -8.56"
+                                                                  Stroke="{DynamicResource SystemAccentColorBrush}"
+                                                                  StrokeThickness="2.4"
+                                                                  StrokeLineCap="Round"
+                                                                  Fill="Transparent"/>
+                                                        </Grid>
+                                                    </Viewbox>
+                                                </Grid>
+                                                <!-- Episode-list view: default. Header is a
+                                                     single full-width episode-row Button
+                                                     (back arrow + "Season N" label) so the
+                                                     entire row is the click target — flat
+                                                     hover tint matches the episode rows
+                                                     below. Body scrolls the season's
+                                                     episodes. -->
+                                                <Grid x:Name="EpisodesPopupEpisodeView"
+                                                      RowDefinitions="Auto,*">
+                                                    <Button Grid.Row="0"
+                                                            Classes="episode-row"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Stretch"
+                                                            Padding="14,12"
+                                                            Cursor="Hand"
+                                                            Focusable="False" IsTabStop="False"
+                                                            Click="EpisodesPopupBack_Click">
+                                                        <Grid Classes="episode-content"
+                                                              ColumnDefinitions="28,*">
+                                                            <Viewbox Grid.Column="0"
+                                                                     Width="18" Height="18"
+                                                                     HorizontalAlignment="Left"
+                                                                     VerticalAlignment="Center">
+                                                                <Grid Width="24" Height="24">
+                                                                    <Path Data="M 12 19 L 5 12 L 12 5 M 19 12 H 5"
+                                                                          Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                                                          StrokeThickness="1.8"
+                                                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                                                          Fill="Transparent"/>
+                                                                </Grid>
+                                                            </Viewbox>
+                                                            <TextBlock Grid.Column="1"
+                                                                       x:Name="EpisodesPopupSeasonLabel"
+                                                                       Text=""
+                                                                       FontSize="16" FontWeight="SemiBold"
+                                                                       VerticalAlignment="Center"
+                                                                       Margin="6,0,0,0"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                        </Grid>
+                                                    </Button>
+                                                    <!-- AllowAutoHide=False makes the
+                                                         ScrollViewer reserve a proper
+                                                         column for the vertical scrollbar
+                                                         (instead of overlaying it on top
+                                                         of the content). When the season
+                                                         has few episodes the scrollbar's
+                                                         column collapses to 0 px and rows
+                                                         stretch full width edge-to-edge;
+                                                         when content overflows the column
+                                                         is 14 px wide and rows stop at the
+                                                         scrollbar's left edge. Same trick
+                                                         used by the episode picker modal. -->
+                                                    <ScrollViewer Grid.Row="1"
+                                                                  x:Name="EpisodesPopupEpisodeScroll"
+                                                                  ScrollViewer.AllowAutoHide="False"
+                                                                  HorizontalScrollBarVisibility="Disabled"
+                                                                  VerticalScrollBarVisibility="Auto">
+                                                        <ItemsControl x:Name="EpisodesPopupEpisodeList">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate DataType="vm:EpisodeRow">
+                                                                    <Button Classes="episode-row"
+                                                                            Classes.playing-now="{Binding IsPlayingNow}"
+                                                                            Classes.unavailable="{Binding !IsAvailable}"
+                                                                            IsEnabled="{Binding IsAvailable}"
+                                                                            HorizontalAlignment="Stretch"
+                                                                            HorizontalContentAlignment="Stretch"
+                                                                            Padding="14,12"
+                                                                            Cursor="Hand"
+                                                                            Tag="{Binding}"
+                                                                            Click="EpisodesPopupEpisode_Click">
+                                                                        <Grid Classes="episode-content"
+                                                                              ColumnDefinitions="28,*,Auto">
+                                                                            <TextBlock Grid.Column="0"
+                                                                                       Text="{Binding Number}"
+                                                                                       FontSize="13"
+                                                                                       FontWeight="SemiBold"
+                                                                                       Opacity="0.65"
+                                                                                       TextAlignment="Center"
+                                                                                       VerticalAlignment="Center"
+                                                                                       Margin="0,0,8,0"/>
+                                                                            <TextBlock Grid.Column="1"
+                                                                                       Text="{Binding Title}"
+                                                                                       FontSize="13"
+                                                                                       FontWeight="SemiBold"
+                                                                                       VerticalAlignment="Center"
+                                                                                       TextWrapping="Wrap"/>
+                                                                            <ProgressBar Grid.Column="2"
+                                                                                         Classes="recent-progress"
+                                                                                         Value="{Binding Progress, Mode=OneWay}"
+                                                                                         Maximum="1"
+                                                                                         Width="48"
+                                                                                         Height="3"
+                                                                                         CornerRadius="2"
+                                                                                         VerticalAlignment="Center"
+                                                                                         Margin="10,0,0,0"/>
+                                                                        </Grid>
+                                                                    </Button>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </Grid>
+                                                <!-- Season-list view: shown when the back
+                                                     arrow above is clicked. Each row is a
+                                                     SeasonItem; clicking one swaps back to
+                                                     the episode-list view for that season.
+                                                     IsCurrentSeason drives the same
+                                                     .playing-now highlight as episodes. -->
+                                                <ScrollViewer x:Name="EpisodesPopupSeasonView"
+                                                              IsVisible="False"
+                                                              ScrollViewer.AllowAutoHide="False"
+                                                              HorizontalScrollBarVisibility="Disabled"
+                                                              VerticalScrollBarVisibility="Auto">
+                                                    <ItemsControl x:Name="EpisodesPopupSeasonList">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="vm:SeasonItem">
+                                                                <Button Classes="episode-row"
+                                                                        Classes.playing-now="{Binding IsCurrentSeason}"
+                                                                        HorizontalAlignment="Stretch"
+                                                                        HorizontalContentAlignment="Stretch"
+                                                                        Padding="14,12"
+                                                                        Cursor="Hand"
+                                                                        Tag="{Binding}"
+                                                                        Click="EpisodesPopupSeason_Click">
+                                                                    <Grid Classes="episode-content"
+                                                                          ColumnDefinitions="*,Auto">
+                                                                        <TextBlock Grid.Column="0"
+                                                                                   Text="{Binding Number, StringFormat='Season {0}'}"
+                                                                                   FontSize="13"
+                                                                                   FontWeight="SemiBold"
+                                                                                   VerticalAlignment="Center"/>
+                                                                        <!-- Right-pointing arrow — visible
+                                                                             only when hovering the row (see
+                                                                             the .season-arrow style block).
+                                                                             Same size + stroke as the popup
+                                                                             header's back arrow so the two
+                                                                             arrows visually match. -->
+                                                                        <Viewbox Grid.Column="1"
+                                                                                 Classes="season-arrow"
+                                                                                 Width="18" Height="18"
+                                                                                 VerticalAlignment="Center"
+                                                                                 Margin="8,0,0,0">
+                                                                            <Grid Width="24" Height="24">
+                                                                                <Path Data="M 12 19 L 19 12 L 12 5 M 5 12 H 19"
+                                                                                      Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                                                                      StrokeThickness="1.8"
+                                                                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                                                                      Fill="Transparent"/>
+                                                                            </Grid>
+                                                                        </Viewbox>
+                                                                    </Grid>
+                                                                </Button>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </Border>
+                                    </Popup>
                                     <!-- v2 — Picture-in-picture ToggleButton.
                                          Grouped with fullscreen per standard
                                          video-player conventions; swaps glyphs
                                          via {Binding IsPipActive} so it shows
                                          "Enter PiP" outside PiP and "Exit PiP"
                                          once the mini-player is up. -->
-                                    <ToggleButton Grid.Column="5" x:Name="PipButton"
+                                    <ToggleButton Grid.Column="7" x:Name="PipButton"
                                                   Classes="transport"
                                                   Focusable="False" IsTabStop="False"
                                                   Click="TogglePip_Click">
@@ -1495,7 +2471,7 @@
                                             </Grid>
                                         </Border>
                                     </ToggleButton>
-                                    <Button Grid.Column="6" Classes="transport"
+                                    <Button Grid.Column="8" Classes="transport"
                                             Focusable="False" IsTabStop="False"
                                             Click="Fullscreen_Click">
                                         <Border Classes="transport-icon">
@@ -1552,6 +2528,7 @@
                             <DataTemplate DataType="services:RecentWatch">
                                 <Button Tag="{Binding}"
                                         Classes="recent-card"
+                                        Classes.not-started="{Binding !IsStarted}"
                                         Click="RecentWatch_Click"
                                         PointerEntered="RecentCard_PointerEntered"
                                         PointerExited="RecentCard_PointerExited"
@@ -1577,8 +2554,7 @@
                                             <Border Classes="playing-scrim"
                                                     CornerRadius="12"
                                                     Background="#80000000"
-                                                    IsHitTestVisible="False"
-                                                    IsVisible="False"/>
+                                                    IsHitTestVisible="False"/>
                                             <!-- Title/Source strip. Sits on top of the
                                                  image (sibling Border, drawn last) so the
                                                  play + watch-later chips inside it stay
@@ -1596,9 +2572,19 @@
                                                                FontSize="12"
                                                                FontWeight="SemiBold"
                                                                TextWrapping="Wrap"/>
-                                                    <TextBlock Text="{Binding Source}"
+                                                    <!-- Episode subtitle ("S2E05: Title") for
+                                                         series entries; the bound IsVisible
+                                                         hides it on movies. -->
+                                                    <TextBlock Text="{Binding EpisodeSubtitle}"
+                                                               IsVisible="{Binding IsSeries}"
                                                                Foreground="{DynamicResource PosterSourceTextBrush}"
                                                                FontSize="10"
+                                                               FontWeight="Medium"
+                                                               TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Source}"
+                                                               Foreground="{DynamicResource SystemAccentColorBrush}"
+                                                               FontSize="10"
+                                                               FontWeight="SemiBold"
                                                                TextWrapping="Wrap"/>
                                                     <!-- Action pair: play (left) + watch-later
                                                          (right). Wrapped in a StackPanel.action-row
@@ -1611,6 +2597,7 @@
                                                         <Button Classes="poster-chip"
                                                                 Tag="{Binding}"
                                                                 Click="RecentWatch_Click"
+                                                                ToolTip.Tip="Play"
                                                                 Width="32" Height="32"
                                                                 Padding="0">
                                                             <Viewbox Width="22" Height="22">
@@ -1623,6 +2610,7 @@
                                                         <Button Classes="poster-chip"
                                                                 Tag="{Binding}"
                                                                 Click="ToggleMyList_Click"
+                                                                ToolTip.Tip="{Binding MyListTooltip}"
                                                                 Width="32" Height="32"
                                                                 Padding="0">
                                                             <Grid>
@@ -1646,6 +2634,38 @@
                                                                 </Viewbox>
                                                             </Grid>
                                                         </Button>
+                                                        <!-- Episode picker chip — series only.
+                                                             Lucide chevron-down, same stroke
+                                                             style as the plus / check icons
+                                                             above so it sits in the same
+                                                             visual rhythm as the rest of the
+                                                             poster-chip row. Wrapped in a
+                                                             32×32 Border so the chip's slot
+                                                             stays in the layout for movies
+                                                             too — the play + my-list pair
+                                                             then keeps the same absolute
+                                                             position regardless of whether
+                                                             the row has 2 or 3 chips,
+                                                             instead of re-centering when
+                                                             the chevron is hidden. -->
+                                                        <Border Width="32" Height="32">
+                                                            <Button Classes="poster-chip"
+                                                                    Tag="{Binding}"
+                                                                    Click="OpenEpisodes_Click"
+                                                                    IsVisible="{Binding IsSeries}"
+                                                                    Width="32" Height="32"
+                                                                    Padding="0"
+                                                                    ToolTip.Tip="Show episodes">
+                                                                <Viewbox Width="22" Height="22">
+                                                                    <Grid Width="24" Height="24">
+                                                                        <Path Data="M 6 9 l 6 6 l 6 -6"
+                                                                              StrokeThickness="2"
+                                                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                                                              Fill="Transparent"/>
+                                                                    </Grid>
+                                                                </Viewbox>
+                                                            </Button>
+                                                        </Border>
                                                     </StackPanel>
                                                 </StackPanel>
                                             </Border>
@@ -1659,8 +2679,6 @@
                                                  top third of the card. ApplyRecentCardVisuals
                                                  toggles IsVisible. Non-interactive. -->
                                             <TextBlock Classes="playing-badge"
-                                                       Text="Currently playing"
-                                                       IsVisible="False"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Top"
                                                        Margin="0,52,0,0"
@@ -1671,8 +2689,6 @@
                                                        IsHitTestVisible="False"/>
                                             <Border Classes="poster"
                                                     CornerRadius="12"
-                                                    BorderThickness="2"
-                                                    BorderBrush="Transparent"
                                                     IsHitTestVisible="False"/>
                                         </Grid>
                                         <Border Margin="0,4,0,0"
@@ -1725,6 +2741,7 @@
                             <DataTemplate DataType="services:MyListEntry">
                                 <Button Tag="{Binding}"
                                         Classes="recent-card"
+                                        Classes.not-started="{Binding !IsStarted}"
                                         Click="MyListEntry_Click"
                                         PointerEntered="RecentCard_PointerEntered"
                                         PointerExited="RecentCard_PointerExited"
@@ -1746,8 +2763,7 @@
                                             <Border Classes="playing-scrim"
                                                     CornerRadius="12"
                                                     Background="#80000000"
-                                                    IsHitTestVisible="False"
-                                                    IsVisible="False"/>
+                                                    IsHitTestVisible="False"/>
                                             <!-- Title/Source strip — sibling of the image
                                                  Border, drawn last so the play + watch-later
                                                  chips inside it stay visible. Goes fully
@@ -1764,9 +2780,20 @@
                                                                FontSize="12"
                                                                FontWeight="SemiBold"
                                                                TextWrapping="Wrap"/>
-                                                    <TextBlock Text="{Binding Source}"
+                                                    <!-- Episode subtitle ("S2E05 · Title") for
+                                                         series entries — mirrors the Recently
+                                                         watched card. IsSeries gates the
+                                                         binding to bs.to URLs only. -->
+                                                    <TextBlock Text="{Binding EpisodeSubtitle}"
+                                                               IsVisible="{Binding IsSeries}"
                                                                Foreground="{DynamicResource PosterSourceTextBrush}"
                                                                FontSize="10"
+                                                               FontWeight="Medium"
+                                                               TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Source}"
+                                                               Foreground="{DynamicResource SystemAccentColorBrush}"
+                                                               FontSize="10"
+                                                               FontWeight="SemiBold"
                                                                TextWrapping="Wrap"/>
                                                     <!-- Action pair: play (left) + remove
                                                          (right, white check). Wrapped in a
@@ -1779,6 +2806,7 @@
                                                         <Button Classes="poster-chip"
                                                                 Tag="{Binding}"
                                                                 Click="MyListEntry_Click"
+                                                                ToolTip.Tip="Play"
                                                                 Width="32" Height="32"
                                                                 Padding="0">
                                                             <Viewbox Width="22" Height="22">
@@ -1791,6 +2819,7 @@
                                                         <Button Classes="poster-chip"
                                                                 Tag="{Binding}"
                                                                 Click="MyListRemove_Click"
+                                                                ToolTip.Tip="Remove from my list"
                                                                 Width="32" Height="32"
                                                                 Padding="0">
                                                             <Viewbox Width="26" Height="26">
@@ -1802,6 +2831,32 @@
                                                                 </Grid>
                                                             </Viewbox>
                                                         </Button>
+                                                        <!-- Episode picker chip — series only.
+                                                             Mirrors the Recently-watched card.
+                                                             Wrapped in a 32×32 Border so the
+                                                             chip's slot stays in the layout
+                                                             on movies too — the play +
+                                                             my-list pair stays in the same
+                                                             absolute position whether the
+                                                             row is 2 or 3 chips. -->
+                                                        <Border Width="32" Height="32">
+                                                            <Button Classes="poster-chip"
+                                                                    Tag="{Binding}"
+                                                                    Click="OpenEpisodes_Click"
+                                                                    IsVisible="{Binding IsSeries}"
+                                                                    Width="32" Height="32"
+                                                                    Padding="0"
+                                                                    ToolTip.Tip="Show episodes">
+                                                                <Viewbox Width="22" Height="22">
+                                                                    <Grid Width="24" Height="24">
+                                                                        <Path Data="M 6 9 l 6 6 l 6 -6"
+                                                                              StrokeThickness="2"
+                                                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                                                              Fill="Transparent"/>
+                                                                    </Grid>
+                                                                </Viewbox>
+                                                            </Button>
+                                                        </Border>
                                                     </StackPanel>
                                                 </StackPanel>
                                             </Border>
@@ -1811,8 +2866,6 @@
                                                  top third of the card. ApplyRecentCardVisuals
                                                  toggles IsVisible. Non-interactive. -->
                                             <TextBlock Classes="playing-badge"
-                                                       Text="Currently playing"
-                                                       IsVisible="False"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Top"
                                                        Margin="0,52,0,0"
@@ -1823,8 +2876,6 @@
                                                        IsHitTestVisible="False"/>
                                             <Border Classes="poster"
                                                     CornerRadius="12"
-                                                    BorderThickness="2"
-                                                    BorderBrush="Transparent"
                                                     IsHitTestVisible="False"/>
                                         </Grid>
                                         <Border Margin="0,4,0,0"
@@ -1866,6 +2917,34 @@
                             Spacing="0"
                             Margin="22,18,22,18"
                             Focusable="True">
+                    <!-- Re-skin the FluentTheme CheckBox indicator
+                         (Border#NormalRectangle) by overriding the
+                         resources its ControlTheme references via
+                         DynamicResource. External Window.Styles
+                         couldn't reliably win against the
+                         ControlTheme's own ^:pointerover / ^:checked
+                         selectors, so we shadow the resource keys
+                         instead. Idle / hover / pressed for the
+                         UNCHECKED state mirror the search input fields
+                         (secondary fill → tertiary fill on hover, no
+                         border). The CHECKED state and its glyph fill
+                         keep the FluentTheme's accent treatment so
+                         the saved state still reads. -->
+                    <StackPanel.Resources>
+                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked"
+                                         Color="{DynamicResource SolidBackgroundFillColorSecondary}"/>
+                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked"
+                                         Color="Transparent"/>
+                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver"
+                                         Color="{DynamicResource SolidBackgroundFillColorTertiary}"/>
+                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver"
+                                         Color="Transparent"/>
+                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed"
+                                         Color="{DynamicResource SolidBackgroundFillColorTertiary}"/>
+                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed"
+                                         Color="Transparent"/>
+                        <Thickness x:Key="CheckBoxBorderThemeThickness">0</Thickness>
+                    </StackPanel.Resources>
                     <!-- Header (title + subtitle), constrained width. -->
                     <StackPanel MaxWidth="560" HorizontalAlignment="Left" Spacing="6">
                         <TextBlock Text="Settings" FontSize="22" FontWeight="Medium"/>
@@ -2249,13 +3328,14 @@
                 </Border>
 
                 <!-- Resize grips — corners (TR/TL/BL/BR) and edges (T/B/L/R).
-                     Placed BEFORE the close/restore StackPanel and the
-                     PipTransport so those interactive surfaces sit on top
-                     and remain clickable; the corners take 22 px out of
-                     each end of the edge grips so they don't fight for
-                     hit-tests at the corners. Corner drags resize both
-                     axes (free aspect / stretch); edge drags resize only
-                     the dragged axis so the user can squash or stretch
+                     Top corners (TR + TL) are placed BEFORE the close/restore
+                     buttons so those buttons sit on top and remain clickable
+                     in the ~14×14 px overlap region between the 22 px grip
+                     and the 32 px button at margin 6,6. The corners take
+                     22 px out of each end of the edge grips so they don't
+                     fight for hit-tests at the corners. Corner drags resize
+                     both axes (free aspect / stretch); edge drags resize
+                     only the dragged axis so the user can squash or stretch
                      the PiP frame independently. -->
                 <Border x:Name="PipResizeGripTR"
                         Tag="TR"
@@ -2264,6 +3344,17 @@
                         Width="22" Height="22"
                         Background="Transparent"
                         Cursor="TopRightCorner"
+                        IsVisible="False"
+                        PointerPressed="PipResizeGrip_PointerPressed"
+                        PointerMoved="PipResizeGrip_PointerMoved"
+                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <Border x:Name="PipResizeGripTL"
+                        Tag="TL"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Width="22" Height="22"
+                        Background="Transparent"
+                        Cursor="TopLeftCorner"
                         IsVisible="False"
                         PointerPressed="PipResizeGrip_PointerPressed"
                         PointerMoved="PipResizeGrip_PointerMoved"
@@ -2432,24 +3523,13 @@
                     </Grid>
                 </Border>
 
-                <!-- Bottom + top-left resize grips — last in the Grid so
-                     they sit on top of PipTransport (which is full-width
-                     transparent and would otherwise eat the corner clicks).
-                     The TR grip lives earlier in the Grid (behind the
-                     close/restore StackPanel) so those buttons stay
-                     clickable. Each grip's Tag identifies which corner so
-                     the shared handler knows which edge stays anchored. -->
-                <Border x:Name="PipResizeGripTL"
-                        Tag="TL"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
-                        Width="22" Height="22"
-                        Background="Transparent"
-                        Cursor="TopLeftCorner"
-                        IsVisible="False"
-                        PointerPressed="PipResizeGrip_PointerPressed"
-                        PointerMoved="PipResizeGrip_PointerMoved"
-                        PointerReleased="PipResizeGrip_PointerReleased"/>
+                <!-- Bottom resize grips — last in the Grid so they sit on
+                     top of PipTransport (which is full-width transparent
+                     and would otherwise eat the corner clicks). The top
+                     grips (TR + TL) live earlier in the Grid (behind the
+                     close/restore buttons) so those buttons stay clickable.
+                     Each grip's Tag identifies which corner so the shared
+                     handler knows which edge stays anchored. -->
                 <Border x:Name="PipResizeGripBL"
                         Tag="BL"
                         HorizontalAlignment="Left"
@@ -2601,5 +3681,543 @@
             </StackPanel>
         </Border>
     </Grid>
+
+    <!-- Episode picker overlay: Netflix-style centered modal with a
+         season ComboBox and an episode list. Shown when the user clicks
+         a result whose Kind = Series (currently bs.to). Backdrop click
+         closes; clicks on the card are suppressed via Handled in
+         code-behind, mirroring the theme picker pattern. -->
+    <Grid x:Name="EpisodePickerOverlay"
+          Grid.RowSpan="3"
+          Background="#80000000"
+          IsVisible="False"
+          PointerPressed="EpisodePickerOverlay_BackdropClicked">
+        <Border HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Width="560"
+                Height="640"
+                MaxHeight="{Binding $parent.Bounds.Height}"
+                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                BorderThickness="0"
+                CornerRadius="12"
+                Padding="0"
+                BoxShadow="0 8 32 0 #66000000"
+                ClipToBounds="True"
+                PointerPressed="EpisodePickerCard_Pressed">
+            <Grid RowDefinitions="Auto,*">
+                <!-- Header-only back layer painted with the active
+                     theme's accent (same brush the playing-now /
+                     last-watched episode row uses) and OpacityMask-
+                     faded out across just the header row's height —
+                     Row 0 only (no RowSpan), so the gradient stops
+                     cleanly at the bottom of the header box. The mask
+                     follows a smoothstep ease: full accent at the
+                     top, smoothly easing to 0 % opacity by offset
+                     0.72 (just above the dropdown row), and clamped
+                     to 0 % past that. The intermediate stops at 0.2
+                     / 0.4 / 0.55 hug a 1−smoothstep(t) curve so the
+                     rate of change tapers at both the top and the
+                     bottom, hiding the linear-knee artefact a 2-stop
+                     fade leaves at the corner where the gradient
+                     meets the flat-0 % region. The mask only varies
+                     alpha — theme-independent — so this works on any
+                     palette without needing a Color-resource token
+                     to bind to (only Brush tokens exist in this
+                     codebase). -->
+                <Border Grid.Row="0"
+                        IsHitTestVisible="False"
+                        Background="{DynamicResource SystemAccentColorBrush}">
+                    <Border.OpacityMask>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                            <GradientStop Offset="0"    Color="#FFFFFFFF"/>
+                            <GradientStop Offset="0.2"  Color="#E5FFFFFF"/>
+                            <GradientStop Offset="0.4"  Color="#A5FFFFFF"/>
+                            <GradientStop Offset="0.55" Color="#50FFFFFF"/>
+                            <GradientStop Offset="0.72" Color="#00FFFFFF"/>
+                        </LinearGradientBrush>
+                    </Border.OpacityMask>
+                </Border>
+                <!-- Combined header zone: a tall poster on the left whose
+                     bottom edge aligns with the season dropdown's bottom.
+                     The right column uses RowDefinitions="Auto,*,Auto" so
+                     the title pins to the top, the dropdown pins to the
+                     bottom, and a flexible * spacer absorbs whatever
+                     vertical room is left. The poster's explicit Height
+                     (140 px) drives the outer row's Auto height, which
+                     the right column then matches — that's how the
+                     dropdown ends up flush with the poster's bottom
+                     without any hard-coded row heights. -->
+                <Grid Grid.Row="0">
+                <Border Padding="20,20,20,12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0"
+                            Width="93" Height="140"
+                            CornerRadius="6"
+                            ClipToBounds="True"
+                            Margin="0,0,14,0"
+                            Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}">
+                        <!-- Border carries a dark Tertiary fill that
+                             shows through whenever the Image's Source
+                             is null/loading — without it the poster
+                             slot would briefly display the previous
+                             series' cached bitmap when opening a show
+                             whose poster fetch is still in flight
+                             (e.g. shows with no TMDb match falling back
+                             to the slower bs.to scrape). -->
+                        <Image x:Name="EpisodePickerThumb"
+                               Stretch="UniformToFill"/>
+                    </Border>
+                    <Grid Grid.Column="1" RowDefinitions="2*,*,Auto">
+                        <!-- Row split that's roughly thirds, with the
+                             title row weighted 2/3 of the non-dropdown
+                             space so a vertically-centered title block
+                             actually shifts visibly off the top edge —
+                             three equal stars only gave ~1.5 px of
+                             breathing room above the 44 px title block
+                             which read as still-pinned-to-top. With this
+                             split the title sits ~13 px below the top,
+                             same upper-area feel the search-result rows
+                             have where the title is centered relative to
+                             the poster. The Auto bottom row is just the
+                             dropdown's natural height so it stays flush
+                             with the poster's bottom edge. -->
+                        <!-- Close button stays top-aligned within its
+                             row so it still sits in the modal's top-
+                             right corner regardless of the row split. -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                            <!-- Top-anchored with explicit Margin so the
+                                 title's first line stays at a FIXED y
+                                 offset from the row top regardless of how
+                                 many lines the title wraps onto — that's
+                                 the "top padding shouldn't change when
+                                 the title wraps" requirement. With
+                                 VerticalAlignment=Center, a wrapping
+                                 title would re-center higher and the
+                                 top would creep upward toward the modal
+                                 edge. The 14 px top inset matches the
+                                 visual position the centered title had
+                                 with 1 line of text. Long titles wrap
+                                 (TextWrapping=Wrap) and the StackPanel
+                                 grows downward into the spacer row — no
+                                 truncation. -->
+                            <StackPanel Grid.Column="0"
+                                        VerticalAlignment="Top"
+                                        Margin="0,14,0,0"
+                                        Spacing="2">
+                                <TextBlock x:Name="EpisodePickerTitle"
+                                           Text=""
+                                           FontSize="20"
+                                           FontWeight="Medium"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock x:Name="EpisodePickerStatus"
+                                           Text=""
+                                           FontSize="12"
+                                           Opacity="0.7"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Classes="back"
+                                    VerticalAlignment="Top"
+                                    Width="32" Height="32"
+                                    Padding="0"
+                                    Cursor="Hand"
+                                    Focusable="False" IsTabStop="False"
+                                    Click="EpisodePickerClose_Click">
+                                <Viewbox Width="18" Height="18">
+                                    <Grid Width="24" Height="24">
+                                        <Path Data="M 4 4 L 20 20 M 20 4 L 4 20"
+                                              Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                              StrokeThickness="1.8"
+                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                              Fill="Transparent"/>
+                                    </Grid>
+                                </Viewbox>
+                            </Button>
+                        </Grid>
+                        <!-- Bottom-right cluster: language dropdown
+                             (German / German Subbed) + season dropdown.
+                             Stacked horizontally and anchored bottom-
+                             right so the season pill's bottom still
+                             lines up with the poster's bottom edge.
+                             Language sits to the left of season because
+                             it scopes the variant the season list is
+                             drawn from — switching language refetches
+                             the series at the matching `/des` URL and
+                             repopulates the season + episode lists. -->
+                        <StackPanel Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Spacing="8">
+                            <!-- Items populated dynamically from
+                                 SyncLanguageBoxFromInfo via ItemsSource
+                                 (a List<LanguageOption>); each item's
+                                 ToString() returns its label so no
+                                 ItemTemplate is needed. Avalonia's
+                                 ComboBox doesn't honor IsVisible=false
+                                 on individual ComboBoxItems in the
+                                 dropdown popup, so filtering the
+                                 source list is the only reliable way
+                                 to actually hide phantom languages. -->
+                            <ComboBox x:Name="EpisodePickerLanguageBox"
+                                      Classes="season-dropdown"
+                                      Width="125"
+                                      MaxDropDownHeight="160"
+                                      SelectionChanged="EpisodePickerLanguage_Changed"/>
+                            <ComboBox x:Name="EpisodePickerSeasonBox"
+                                      Classes="season-dropdown"
+                                      Width="110"
+                                      MaxDropDownHeight="280"
+                                      DropDownOpened="EpisodePickerSeasonBox_DropDownOpened"
+                                      SelectionChanged="EpisodePickerSeason_Changed">
+                                <!-- Two distinct templates: ItemTemplate is what
+                                     the dropdown items use (bold "Season N" +
+                                     smaller, dimmer "(M Episodes)" so the
+                                     count is visible but reads as secondary
+                                     metadata). SelectionBoxItemTemplate is what
+                                     the closed button shows — just "Season N"
+                                     without the count, so the compact 110 px
+                                     button doesn't truncate. -->
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate DataType="vm:SeasonItem">
+                                        <StackPanel Orientation="Horizontal"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Number, StringFormat='Season {0}'}"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding EpisodeCount, StringFormat=' ({0} Episodes)'}"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="11"
+                                                       Opacity="0.55"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                                <ComboBox.SelectionBoxItemTemplate>
+                                    <DataTemplate DataType="vm:SeasonItem">
+                                        <TextBlock Text="{Binding Number, StringFormat='Season {0}'}"
+                                                   VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </ComboBox.SelectionBoxItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+                </Border>
+                </Grid>
+
+                <!-- Episode list. Hover stays in place (no scale-up like
+                     Button.back) — just a Netflix-style background tint
+                     that paints the FULL row width edge-to-edge of the
+                     popup card. The horizontal indent (20px) lives on
+                     the button's Padding instead of the ScrollViewer,
+                     so the hover background reaches all the way to the
+                     popup edges. Per-row ProgressBar replaces the
+                     language tag and shows how much of the episode the
+                     user has watched (empty for unwatched). -->
+                <!-- 20px bottom inset on the ScrollViewer itself —
+                     this inseta both the content viewport AND the
+                     scrollbar chrome equally, so the scrollbar's
+                     bottom end aligns with the last episode's bottom
+                     padding instead of running all the way to the
+                     popup card edge. ItemsControl carries no margin
+                     so the ScrollViewer's extent math (used to
+                     compute scrollbar thumb position on mousewheel)
+                     stays standard — content-extent margins were
+                     making the thumb visual lag the actual scroll. -->
+                <!-- AllowAutoHide=False makes the ScrollViewer reserve a
+                     proper column for the vertical scrollbar (instead of
+                     letting the content presenter span both columns and
+                     overlay it). The ScrollBar's IsVisible toggles based
+                     on whether content overflows, so the column is 14 px
+                     wide when the scrollbar is needed and collapses to
+                     0 when it isn't — content stretches edge-to-edge for
+                     short seasons and stops at the scrollbar's left edge
+                     for long ones, all driven by the framework's own
+                     layout. No class toggle needed, and the layout
+                     re-computes correctly on window resize since it's
+                     standard ScrollViewer behavior. -->
+                <ScrollViewer x:Name="EpisodePickerScrollViewer"
+                              Grid.Row="1"
+                              Margin="0,0,0,20"
+                              ScrollViewer.AllowAutoHide="False"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="EpisodePickerList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:EpisodeRow">
+                                <Button Classes="episode-row"
+                                        Classes.playing-now="{Binding IsPlayingNow}"
+                                        Classes.unavailable="{Binding !IsAvailable}"
+                                        IsEnabled="{Binding IsAvailable}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        Padding="20,16"
+                                        Cursor="Hand"
+                                        Tag="{Binding}"
+                                        Click="EpisodePickerEpisode_Click">
+                                    <Grid Classes="episode-content"
+                                          ColumnDefinitions="32,*,Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Number}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Opacity="0.65"
+                                                   TextAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,12,0"/>
+                                        <StackPanel Grid.Column="1"
+                                                    Orientation="Vertical"
+                                                    VerticalAlignment="Center"
+                                                    Spacing="2">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontWeight="SemiBold"
+                                                       TextWrapping="Wrap"/>
+                                            <!-- "Playing in <language>" subtitle —
+                                                 only on the currently-playing row,
+                                                 only while there's active playback.
+                                                 Same .result-meta class + 11 pt size
+                                                 as the Source / MetaLine in search
+                                                 results, so the secondary register
+                                                 reads consistent across surfaces. -->
+                                            <TextBlock Text="{Binding PlayingLanguageLabel}"
+                                                       IsVisible="{Binding HasPlayingLanguageLabel}"
+                                                       Classes="result-meta"
+                                                       FontSize="11"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <ProgressBar Grid.Column="2"
+                                                     Classes="recent-progress"
+                                                     Value="{Binding Progress, Mode=OneWay}"
+                                                     Maximum="1"
+                                                     Width="64"
+                                                     Height="3"
+                                                     CornerRadius="2"
+                                                     VerticalAlignment="Center"
+                                                     Margin="12,0,0,0"/>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <!-- Loading spinner overlay shown only on the first
+                     /series fetch for a given series — repeat opens hit
+                     BsToService's session cache and skip this state
+                     entirely. Same Lucide loader-circle pattern + size
+                     (48×48 Viewbox, 24×24 inner Grid, 2.4 stroke) as
+                     the search-results LoadingSpinner. The spinning
+                     class is toggled in code so the infinite animation
+                     stops invalidating its target while hidden. Sits
+                     in Grid.Row=1 (the episode-list area only — not
+                     the header), with RowDefinitions=2*,* and the
+                     spinner centered in the top row, which lands it
+                     at ~1/3 down the episode-list area. Stays in the
+                     top portion regardless of how tall the modal is,
+                     so it doesn't drift around when the window is
+                     resized. -->
+                <Grid Grid.Row="1"
+                      x:Name="EpisodePickerLoading"
+                      RowDefinitions="2*,*"
+                      IsVisible="False"
+                      IsHitTestVisible="False">
+                    <Viewbox Grid.Row="0"
+                             Width="48" Height="48"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Grid Width="24" Height="24"
+                              x:Name="EpisodePickerLoadingSpinner"
+                              RenderTransformOrigin="50%,50%">
+                            <Grid.Styles>
+                                <Style Selector="Grid#EpisodePickerLoadingSpinner.spinning">
+                                    <Style.Animations>
+                                        <Animation Duration="0:0:1"
+                                                   IterationCount="INFINITE">
+                                            <KeyFrame Cue="0%">
+                                                <Setter Property="RotateTransform.Angle" Value="0"/>
+                                            </KeyFrame>
+                                            <KeyFrame Cue="100%">
+                                                <Setter Property="RotateTransform.Angle" Value="360"/>
+                                            </KeyFrame>
+                                        </Animation>
+                                    </Style.Animations>
+                                </Style>
+                            </Grid.Styles>
+                            <Grid.RenderTransform>
+                                <RotateTransform/>
+                            </Grid.RenderTransform>
+                            <Path Data="M 21 12 a 9 9 0 1 1 -6.219 -8.56"
+                                  Stroke="{DynamicResource SystemAccentColorBrush}"
+                                  StrokeThickness="2.4"
+                                  StrokeLineCap="Round"
+                                  Fill="Transparent"/>
+                        </Grid>
+                    </Viewbox>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+
+    <!-- bs.to captcha overlay: when the user clicks an episode, this
+         opens with an embedded WebView pointed at the bs.to episode
+         URL. The user solves Google's captcha (or it auto-passes on
+         their real browser fingerprint), bs.to's JS posts to embed.php,
+         and our injected monkey-patch JS forwards the resolved hoster
+         URL back to C# via WebMessageReceived. We then close the
+         overlay and hand the hoster URL to the existing playback flow.
+         Backdrop click cancels. -->
+    <Grid x:Name="BstoCaptchaOverlay"
+          Grid.RowSpan="3"
+          Background="#80000000"
+          IsVisible="False"
+          PointerPressed="BstoCaptchaOverlay_BackdropClicked">
+        <!-- Width/Height set the preferred size; MaxWidth/MaxHeight
+             bound to the overlay's actual bounds cap the card to the
+             available window area, so resizing the app window below
+             780×640 shrinks the popup instead of clipping it. The
+             binding follows the live window size, so the popup
+             rescales smoothly while the user drags the resize edge. -->
+        <Border HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Width="780"
+                Height="640"
+                MaxWidth="{Binding $parent.Bounds.Width}"
+                MaxHeight="{Binding $parent.Bounds.Height}"
+                Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="0"
+                BoxShadow="0 8 32 0 #66000000"
+                ClipToBounds="True"
+                PointerPressed="BstoCaptchaCard_Pressed">
+            <Grid RowDefinitions="Auto,*">
+                <!-- Header: title + close button. -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto"
+                      Margin="20,16,12,12">
+                    <StackPanel Grid.Column="0"
+                                VerticalAlignment="Center"
+                                Spacing="1">
+                        <TextBlock x:Name="BstoCaptchaTitle"
+                                   Text="Solve captcha to start playback"
+                                   FontSize="18"
+                                   FontWeight="Medium"/>
+                        <TextBlock x:Name="BstoCaptchaSubtitle"
+                                   FontSize="13"
+                                   Opacity="0.55"
+                                   IsVisible="False"/>
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Classes="back"
+                            Width="32" Height="32"
+                            Padding="0"
+                            Cursor="Hand"
+                            Focusable="False" IsTabStop="False"
+                            Click="BstoCaptchaClose_Click">
+                        <Viewbox Width="18" Height="18">
+                            <Grid Width="24" Height="24">
+                                <Path Data="M 4 4 L 20 20 M 20 4 L 4 20"
+                                      Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                      StrokeThickness="1.8"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Fill="Transparent"/>
+                            </Grid>
+                        </Viewbox>
+                    </Button>
+                </Grid>
+
+                <!-- WebView area: the WebView always renders (Opacity=0
+                     doesn't propagate to native WebView2/WKWebView
+                     surfaces), so we OVERLAY an opaque Border on top
+                     of it that hides bs.to until the captcha shows up.
+                     When the JS bridge posts captcha_visible, the
+                     cover collapses and the WebView is revealed —
+                     showing only the captcha widget thanks to the
+                     CSS backdrop the JS injects. -->
+                <Grid Grid.Row="1" Margin="16,0,16,16">
+                    <!-- Parent Border carries IsVisible — toggling that
+                         (rather than IsVisible/Margin on the WebView
+                         itself) is what actually propagates down to
+                         the native WebView HWND. WebView itself ignores
+                         layout-level hiding; its parent must collapse. -->
+                    <Border x:Name="BstoCaptchaWebViewWrapper"
+                            CornerRadius="8"
+                            ClipToBounds="True"
+                            Margin="-100000,0,0,0">
+                        <!-- Wrapper always IsVisible=true with default
+                             Margin pushed far offscreen. While the
+                             outer BstoCaptchaOverlay is hidden, this
+                             wrapper isn't laid out (parent collapses
+                             its children), so no HWND exists and no
+                             clicks are blocked. The moment the overlay
+                             opens, the wrapper lays out at the offscreen
+                             Margin — WebView2's HWND is created at
+                             offscreen coords and paints there. Reveal
+                             becomes a Margin-only change (offscreen → 0),
+                             never an IsVisible toggle that would create
+                             a fresh HWND and surface its first-paint
+                             flash. Background on the NativeWebView feeds
+                             through to WebView2's surface default so
+                             initial paint is already themed. -->
+                        <webview:NativeWebView x:Name="BstoCaptchaWebView"
+                                               Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"/>
+                    </Border>
+
+                    <!-- Cover that masks the WebView underneath. -->
+                    <Border x:Name="BstoCaptchaLoadingCover"
+                            CornerRadius="8"
+                            Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
+                            IsHitTestVisible="True">
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="14">
+                            <Viewbox Width="64" Height="64">
+                                <Grid Width="24" Height="24"
+                                      x:Name="BstoCaptchaSpinner"
+                                      RenderTransformOrigin="50%,50%">
+                                    <Grid.Styles>
+                                        <!-- Class-gated like LoadingSpinner —
+                                             Avalonia's INFINITE animations
+                                             keep invalidating their target
+                                             even when the parent overlay is
+                                             IsVisible=False, which leaked a
+                                             centered glitched-square paint
+                                             over the video player after the
+                                             captcha overlay had been opened
+                                             once per session. .spinning is
+                                             added on overlay open and removed
+                                             on close, so the animation only
+                                             exists while the spinner is
+                                             actually being shown. -->
+                                        <Style Selector="Grid#BstoCaptchaSpinner.spinning">
+                                            <Style.Animations>
+                                                <Animation Duration="0:0:1"
+                                                           IterationCount="INFINITE">
+                                                    <KeyFrame Cue="0%">
+                                                        <Setter Property="RotateTransform.Angle" Value="0"/>
+                                                    </KeyFrame>
+                                                    <KeyFrame Cue="100%">
+                                                        <Setter Property="RotateTransform.Angle" Value="360"/>
+                                                    </KeyFrame>
+                                                </Animation>
+                                            </Style.Animations>
+                                        </Style>
+                                    </Grid.Styles>
+                                    <Grid.RenderTransform>
+                                        <RotateTransform/>
+                                    </Grid.RenderTransform>
+                                    <Path Data="M 21 12 a 9 9 0 1 1 -6.219 -8.56"
+                                          Stroke="{DynamicResource SystemAccentColorBrush}"
+                                          StrokeThickness="2.4"
+                                          StrokeLineCap="Round"
+                                          Fill="Transparent"/>
+                                </Grid>
+                            </Viewbox>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+            </Grid>
+        </Border>
+    </Grid>
+
     </Grid>
 </Window>

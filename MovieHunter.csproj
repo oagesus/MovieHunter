@@ -27,5 +27,13 @@
     <PackageReference Include="LibVLCSharp.Avalonia" Version="3.9.7" />
     <PackageReference Include="VideoLAN.LibVLC.Mac" Version="3.1.3.1" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <!-- Embedded WebView: used by the bs.to captcha overlay so the user
+         can solve a Google reCAPTCHA inside the app (the only path that
+         passes Google's bot detection). Avalonia.Controls.WebView wraps
+         the platform-native webview on each OS — WebView2 on Windows,
+         WKWebView on macOS, WebKitGTK on Linux — so the package itself
+         is small (~1 MB); the actual rendering uses what's already
+         installed with the OS. -->
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.0" />
   </ItemGroup>
 </Project>

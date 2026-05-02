@@ -14,6 +14,7 @@ internal static class EngineDisplayName
         return engineName.ToLowerInvariant() switch
         {
             "hdfilme" => "HDfilme (hdfilme.win)",
+            "bsto" => "Burning Series (bs.to)",
             _ => GenericPretty(engineName),
         };
     }

@@ -26,16 +26,35 @@ public class AggregatedSearchService
 {
     private readonly SearxngClient _sx;
     private readonly TmdbClient _tmdb;
+    private readonly BsToService _bsto;
+
+    // Engine name for bs.to (matches the Sources toggle injected in
+    // MainWindowViewModel and the EngineDisplayName mapping). bs.to is
+    // routed through BsToService — not SearXNG — because bs.to has no
+    // usable HTTP-GET search endpoint.
+    private const string BstoEngine = "bsto";
 
     private const int MaxConcurrentQueries = 2;
     private const int MinJitterMs = 120;
     private const int MaxJitterMs = 350;
     private const int MaxPagesPerQuery = 3;
+    // Hard cap on parallel TMDb poster lookups per search. bs.to's
+    // substring-match directory can return hundreds of hits for short
+    // queries (e.g. "A" → ~2k results); fanning out one TMDb request
+    // per hit would burst past TMDb's rate limit and stall the search
+    // behind a multi-minute Task.WhenAll. Capping the fan-out keeps
+    // the search responsive — the first 50 series cards get posters,
+    // the rest stay text-only with the dark Border fallback. The
+    // episode picker does its own on-demand TMDb lookup for cards
+    // that didn't get a poster here, so opening any non-enriched
+    // card still surfaces the right artwork on demand.
+    private const int MaxTmdbPosterEnrichmentPerSearch = 50;
 
-    public AggregatedSearchService(SearxngClient sx, TmdbClient tmdb)
+    public AggregatedSearchService(SearxngClient sx, TmdbClient tmdb, BsToService bsto)
     {
         _sx = sx;
         _tmdb = tmdb;
+        _bsto = bsto;
     }
 
     public IReadOnlyList<string> LastUnresponsiveEngines => _sx.LastUnresponsiveEngines;
@@ -51,10 +70,18 @@ public class AggregatedSearchService
             .Where(s => s.Enabled)
             .Select(s => s.Name)
             .ToList();
+        // bs.to bypasses SearXNG (no usable HTTP-GET search) — pull it
+        // out of the engines list we send to SearXNG, then dispatch it
+        // separately below if it's enabled.
+        var bstoEnabled = enabledEngines.Any(
+            n => string.Equals(n, BstoEngine, StringComparison.OrdinalIgnoreCase));
+        var sxEngines = enabledEngines
+            .Where(n => !string.Equals(n, BstoEngine, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var hasAnyEntries = sources.Entries.Count > 0;
-        IReadOnlyList<string>? engineNames = hasAnyEntries ? enabledEngines : null;
+        IReadOnlyList<string>? engineNames = hasAnyEntries ? sxEngines : null;
         IReadOnlyDictionary<string, int>? caps = hasAnyEntries
-            ? enabledEngines.ToDictionary(n => n, _ => cap, StringComparer.OrdinalIgnoreCase)
+            ? sxEngines.ToDictionary(n => n, _ => cap, StringComparer.OrdinalIgnoreCase)
             : null;
 
         var (queries, candidates) = await BuildQueriesAndCandidatesAsync(title, year, sources, ct);
@@ -86,11 +113,28 @@ public class AggregatedSearchService
         }
 
         var tasks = queries.Select(QueryAllPages).ToList();
+        // bs.to fans out separately — one call to the Python service
+        // per search (the directory + filter happens server-side and
+        // is cached). The user's configured "results per source" cap
+        // is forwarded as the server's `limit` param so a 1000-cap
+        // setting actually surfaces up to 1000 bs.to hits instead of
+        // the server's 30-default. Empty list when bs.to is disabled.
+        if (bstoEnabled)
+        {
+            tasks.Add(SafeRun(() => _bsto.SearchAsync(title, cap, ct)));
+        }
 
         // Collect first so we can rank by TMDb-match score before yielding.
         var scored = new List<(VideoResult Hit, double Score, int OriginalOrder)>();
         var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var orderCounter = 0;
+        // Series hits without a thumbnail (bs.to's directory is text-only)
+        // queued for TMDb poster enrichment. Resolved in parallel after
+        // the search aggregation finishes so each lookup runs concurrently
+        // instead of blocking the next batch.
+        var posterEnrichmentTasks = new List<Task>();
+        var canEnrichWithTmdb = sources.TmdbEnabled
+            && !string.IsNullOrWhiteSpace(sources.TmdbApiKey);
 
         while (tasks.Count > 0)
         {
@@ -103,10 +147,37 @@ public class AggregatedSearchService
                 if (string.IsNullOrWhiteSpace(hit.PageUrl)) continue;
                 if (!seenUrls.Add(hit.PageUrl)) continue;
 
+                if (canEnrichWithTmdb
+                    && hit.Kind == VideoKind.Series
+                    && string.IsNullOrEmpty(hit.ThumbnailUrl)
+                    && posterEnrichmentTasks.Count < MaxTmdbPosterEnrichmentPerSearch)
+                {
+                    var capturedHit = hit;
+                    posterEnrichmentTasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var poster = await _tmdb.SearchTvPosterAsync(
+                                sources.TmdbApiKey, capturedHit.Title, ct);
+                            if (!string.IsNullOrEmpty(poster))
+                                capturedHit.ThumbnailUrl = poster;
+                        }
+                        catch { /* TMDb lookup failures fall back to no thumb */ }
+                    }, ct));
+                }
+
                 var score = candidates.Count > 0 ? BestMatchScore(hit, candidates) : 0;
                 scored.Add((hit, score, orderCounter++));
             }
         }
+
+        // Wait for TMDb poster lookups to land before yielding so the
+        // search-result row appears with its poster already in place
+        // (no late "thumbnail pops in" jump). Bounded by TMDb's response
+        // time — for a typical 10-result bs.to batch this adds ~300 ms
+        // total since the lookups run in parallel.
+        if (posterEnrichmentTasks.Count > 0)
+            await Task.WhenAll(posterEnrichmentTasks);
 
         // Rank: higher score first; among equals, preserve original order.
         scored.Sort((a, b) =>

@@ -2,11 +2,14 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Controls.Documents;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -33,7 +36,34 @@ public partial class MainWindow
     private Media? _currentMedia;
 
     private long _pendingSeekMs;
+    // True while VLC has actually transitioned to Playing for the
+    // current media — not just while we've called Play() and a click
+    // has been registered. Drives the Recent / MyList card badge so
+    // bs.to series show "Continue playing" through the captcha + load
+    // chain and only flip to "Currently playing" once the video is
+    // really decoding frames. Movies don't strictly need the gate
+    // (their click → playback loop is a few hundred ms), but the
+    // unified flag keeps the badge honest across both kinds.
+    private bool _isVideoActuallyPlaying;
+    // Resume position preserved across a Stopped/Ended → Play restart.
+    // _pendingSeekMs is a one-shot (cleared once the Playing event has
+    // applied it), so when an HLS stream stalls right after the initial
+    // seek and the user clicks Play to retry, _pendingSeekMs is already
+    // 0 and the restart would otherwise drop the user back at the start.
+    // _resumeFromMs holds the original startPosMs from OnPlayRequested
+    // for the lifetime of the current media so the restart re-seeks to
+    // the same spot.
+    private long _resumeFromMs;
     private bool _isSliderUpdatingFromPlayer;
+    // Drag-detection for the PositionSlider thumb. When the user is
+    // mid-drag we DON'T seek on every ValueChanged — that fired
+    // hundreds of seeks during a single drag, which on HLS streams
+    // (bs.to → VOE) made VLC honor only an early position and then
+    // ignore the final drag-released one. We capture the fraction in
+    // _pendingDragFraction during the drag and apply a single seek
+    // when DragCompleted fires.
+    private bool _isSliderDragging;
+    private double _pendingDragFraction;
     private WindowState _preFullScreenState = WindowState.Normal;
     private readonly DispatcherTimer _hideUiTimer;
     private readonly DispatcherTimer _playbackWatchdog;
@@ -154,6 +184,17 @@ public partial class MainWindow
                 _player.Time = Math.Min(_pendingSeekMs, _player.Length - 1000);
                 _pendingSeekMs = 0;
             }
+            // Only NOW does the playing card badge flip from
+            // "Continue playing" → "Currently playing". For movies the
+            // gap from click to here is small; for bs.to series it
+            // covers the full captcha + hoster-extract + buffer chain.
+            _isVideoActuallyPlaying = true;
+            // Single source of truth for the deferred series reorder —
+            // see OnSeriesActuallyPlaying. Movies have already been
+            // reordered optimistically at click time / OnPlayRequested,
+            // so this is a no-op for them.
+            OnSeriesActuallyPlaying();
+            ApplyRecentPlayingHighlightNow();
         });
         _player.Paused += (_, _) => UI(() =>
         {
@@ -163,6 +204,8 @@ public partial class MainWindow
         _player.EndReached += (_, _) => UI(() =>
         {
             SetPlayPauseIcons(playing: false);
+            _isVideoActuallyPlaying = false;
+            ApplyRecentPlayingHighlightNow();
             // Mark as fully watched. In-place update — the card's already
             // at the top from OnPlayRequested, so we don't need a re-insert
             // (which would destroy and recreate its visual and flicker).
@@ -211,6 +254,10 @@ public partial class MainWindow
     private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e)
     {
         _hasReceivedFrame = true;
+        // Track the latest known playback position so a mid-stream
+        // Stopped→Play restart (HLS stall) re-seeks to where the user
+        // actually was, not to the original resume-from position.
+        if (e.Time > 0) _resumeFromMs = e.Time;
         UI(() =>
         {
             _playbackWatchdog.Stop();
@@ -220,15 +267,37 @@ public partial class MainWindow
                 PositionSlider.IsEnabled = _player.IsSeekable;
                 if (PipPositionSlider is not null)
                     PipPositionSlider.IsEnabled = _player.IsSeekable;
-                SetSliderFromPlayer((double)e.Time / length * 1000.0);
-                var remaining = FormatTime(
-                    TimeSpan.FromMilliseconds(Math.Max(0, length - e.Time)));
-                DurationLabel.Text = remaining;
-                if (PipDurationLabel is not null) PipDurationLabel.Text = remaining;
+                // While the user is mid-drag, do NOT push the player's
+                // current time back into the slider — the player is
+                // still playing at its pre-drag position, so this
+                // would yank the thumb back to where the drag started
+                // every time TimeChanged fires (which it does many
+                // times per second). The Recent-progress update below
+                // still happens, so the progress bar in Recently
+                // watched stays accurate.
+                if (!_isSliderDragging)
+                {
+                    SetSliderFromPlayer((double)e.Time / length * 1000.0);
+                    var remaining = FormatTime(
+                        TimeSpan.FromMilliseconds(Math.Max(0, length - e.Time)));
+                    DurationLabel.Text = remaining;
+                    if (PipDurationLabel is not null) PipDurationLabel.Text = remaining;
+                }
                 // Push the live position into the matching Recent entry so
                 // its progress bar tracks playback. In-memory only — disk
-                // save still happens on pause / close / end.
-                if (_currentVideoResult is not null
+                // save still happens on pause / close / end. Skipped while
+                // the user is mid-drag on the seek slider — during drag
+                // the slider handler is the authoritative source for
+                // PositionMs (it pushes the drag-preview position so the
+                // Recent / MyList / search progress bars reflect what
+                // the user is dragging to). Without this guard the
+                // playback tick races the drag handler and the bars
+                // oscillate between the live playback time (which
+                // hasn't moved yet — seek is deferred to drag-completed)
+                // and the drag-preview position, producing visible
+                // flicker until release.
+                if (!_isSliderDragging
+                    && _currentVideoResult is not null
                     && DataContext is MainWindowViewModel vm)
                 {
                     vm.Recent.UpdatePositionInMemory(_currentVideoResult, e.Time, length);
@@ -288,6 +357,67 @@ public partial class MainWindow
         _isSliderUpdatingFromPlayer = false;
     }
 
+    // PointerPressed on the slider — fires for both thumb-grab and
+    // track-click. Thumb.DragStarted alone wasn't enough because it
+    // only fires when the user grabs the thumb itself; if they
+    // clicked the track and then dragged before releasing, the flag
+    // never became true and TimeChanged kept yanking the slider back
+    // to the player's pre-seek position. PointerPressed catches both
+    // entry points uniformly.
+    internal void OnPositionSliderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Slider slider) return;
+        if (!e.GetCurrentPoint(slider).Properties.IsLeftButtonPressed) return;
+        _isSliderDragging = true;
+        _pendingDragFraction = slider.Value / 1000.0;
+    }
+
+    // PointerReleased / PointerCaptureLost — end of the user's
+    // interaction. Apply the single deferred seek. Captured pointer
+    // can be lost if the user drags off-window then releases; treating
+    // it as a release ensures we never get stuck with the dragging
+    // flag latched on.
+    internal void OnPositionSliderPointerReleased(object? sender, PointerReleasedEventArgs e)
+        => EndPositionSliderDrag();
+
+    internal void OnPositionSliderPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+        => EndPositionSliderDrag();
+
+    private void EndPositionSliderDrag()
+    {
+        if (!_isSliderDragging) return;
+        _isSliderDragging = false;
+        if (_player.Length > 0 && _player.IsSeekable
+            && _player.State != VLCState.Ended
+            && _player.State != VLCState.Stopped)
+        {
+            // Set both Time and Position. For direct streams (Doodstream
+            // MP4) Position is enough; for HLS m3u8 (VOE on bs.to) the
+            // segment-aware seek path inside LibVLC is more reliably
+            // triggered by Time. Setting both is harmless — whichever
+            // wins, the player lands at the user's drag-released spot.
+            // Sync the slider visual to the new target right away so
+            // the next TimeChanged (which arrives a frame or two
+            // later from VLC's seek-complete) doesn't briefly snap
+            // the thumb backwards before catching up.
+            var targetMs = (long)(_pendingDragFraction * _player.Length);
+            _player.Time = targetMs;
+            _player.Position = (float)_pendingDragFraction;
+            SetSliderFromPlayer(_pendingDragFraction * 1000.0);
+            var remaining = FormatTime(
+                TimeSpan.FromMilliseconds(Math.Max(0, _player.Length - targetMs)));
+            DurationLabel.Text = remaining;
+            if (PipDurationLabel is not null) PipDurationLabel.Text = remaining;
+        }
+        else if (_player.State == VLCState.Ended || _player.State == VLCState.Stopped)
+        {
+            if (_currentMedia is null) return;
+            if (_player.Length > 0)
+                _pendingSeekMs = (long)(_pendingDragFraction * _player.Length);
+            _player.Play(_currentMedia);
+        }
+    }
+
     private void OnPositionSliderChanged(object? sender, RangeBaseValueChangedEventArgs e)
     {
         if (_isSliderUpdatingFromPlayer) return;
@@ -328,7 +458,23 @@ public partial class MainWindow
 
         if (_player.Length <= 0 || !_player.IsSeekable) return;
 
-        _player.Position = (float)fraction;
+        if (_isSliderDragging)
+        {
+            // Mid-drag: just remember the latest fraction and update
+            // the visual remaining-time label below. The actual seek
+            // is deferred until DragCompleted, so HLS streams only
+            // see one Position write at the drag's final value
+            // instead of hundreds during the drag (which racing the
+            // final write with earlier in-flight ones is what made
+            // bs.to/VOE seeks land on the wrong spot).
+            _pendingDragFraction = fraction;
+        }
+        else
+        {
+            // Click on the track or programmatic change — single
+            // ValueChanged event, so seek immediately.
+            _player.Position = (float)fraction;
+        }
 
         // TimeChanged only fires during active playback, so when seeking
         // while paused we update the remaining-time label and the Recent
@@ -348,11 +494,50 @@ public partial class MainWindow
     private static string FormatTime(TimeSpan t) =>
         t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss");
 
+    // Single source of truth for the bs.to-series-only deferred list
+    // reorder. Called from the Playing event when frames first arrive,
+    // so the user's mental model matches what they see: a series card
+    // flips from "Continue playing" → "Currently playing" AND moves to
+    // the top of Recent / MyList at the same instant.
+    //
+    // Movies don't go through this path. They use the optimistic
+    // reorder in the click handlers / OnPlayRequested because their
+    // click → playback gap is short and an immediate reorder feels
+    // right. For series the gap covers a full captcha + hoster-extract
+    // + buffer chain (5–30 s), so deferring matches the user's
+    // perception of "the show is now actually playing".
+    //
+    // No-op when:
+    //   - There's no active video (e.g. user closed playback before
+    //     the Playing event landed).
+    //   - The active video isn't a series episode (no SeriesPageUrl).
+    //     Movies skip the body without touching the lists.
+    private void OnSeriesActuallyPlaying()
+    {
+        if (_currentVideoResult is not { } source) return;
+        if (string.IsNullOrEmpty(source.SeriesPageUrl)) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+        vm.Recent.MoveToTopAndSave(source);
+        vm.MyList.MoveToTopAndSave(source);
+        vm.MyList.UpdateLastEpisodeAndSave(source);
+    }
+
     // ── VM-driven playback entry point ───────────────────────────────
     private void OnPlayRequested(StreamResult s, VideoResult source, long startPosMs)
     {
         UI(() =>
         {
+            // Snapshot whether we're already inside a playback session
+            // BEFORE overwriting _currentVideoResult — used below to
+            // decide whether to (re-)capture the origin tab. An episode
+            // switch via the in-player Episodes popup re-enters this
+            // method while still in the playback view, so
+            // CurrentViewFromPanels() would return Search (none of the
+            // tab panels are visible during playback), wiping out the
+            // origin tab. Skip the capture for the episode-switch case
+            // so PiP / Back returns to the right tab.
+            var wasAlreadyPlaying = _currentVideoResult is not null;
+
             // Save the movie we're leaving before overwriting _currentVideoResult.
             SaveCurrentPosition();
 
@@ -365,6 +550,11 @@ public partial class MainWindow
 
             _currentVideoResult = source;
             _pendingSeekMs = startPosMs;
+            _resumeFromMs = startPosMs;
+            // New media is loading — clear the actually-playing flag so
+            // the playing card's badge stays at "Continue playing" until
+            // VLC's Playing event re-asserts it.
+            _isVideoActuallyPlaying = false;
             // Real playback has begun — drop the optimistic-highlight URL
             // so subsequent updates flow through _currentVideoResult.
             _pendingPlayingPageUrl = null;
@@ -375,24 +565,53 @@ public partial class MainWindow
             // next save.
             if (DataContext is MainWindowViewModel vmAdd)
             {
-                vmAdd.Recent.UpsertAndSave(source, Math.Max(0, startPosMs), 0);
-                // Mirror the float-to-top behaviour for My-list: if this
-                // movie is saved, bump it to position 0 so the My-list
-                // grid reflects the most-recent play first (same sort
-                // order as Recently watched). No-op for movies not in
-                // My-list — we don't auto-add on play.
-                vmAdd.MyList.MoveToTopAndSave(source);
+                var isSeriesEpisode = !string.IsNullOrEmpty(source.SeriesPageUrl);
+                if (isSeriesEpisode)
+                {
+                    // bs.to series — defer the reorder until VLC fires
+                    // the Playing event (see OnSeriesActuallyPlaying).
+                    // UpdatePositionAndSave updates an existing entry's
+                    // fields in place WITHOUT moving it to the top, so
+                    // the card stays at its current position; for a
+                    // brand-new series with no prior Recent entry it
+                    // falls back to UpsertAndSave which inserts at top
+                    // (the only sensible place for a fresh entry).
+                    // MyList move + last-episode write are also
+                    // deferred — both run at OnSeriesActuallyPlaying.
+                    vmAdd.Recent.UpdatePositionAndSave(source, Math.Max(0, startPosMs), 0);
+                }
+                else
+                {
+                    // Movie — optimistic reorder. The click → frame gap
+                    // is short enough that floating the card to top
+                    // right away matches user expectation.
+                    vmAdd.Recent.UpsertAndSave(source, Math.Max(0, startPosMs), 0);
+                    vmAdd.MyList.MoveToTopAndSave(source);
+                    vmAdd.MyList.UpdateLastEpisodeAndSave(source);
+                }
             }
 
             // Highlight the now-playing card in the Recently watched panel
             // (deferred to next tick so the freshly-upserted item has had
             // a layout pass to materialise its visual).
             RefreshRecentPlayingHighlight();
+            // Light up the matching search-result row, if any. Mirrors
+            // the recent / my-list card highlight; covers the case
+            // where the user kept their search visible after starting
+            // playback and wants to spot the active result quickly.
+            SyncSearchResultsCurrentlyPlaying();
             // Capture which view the user was on so Back_Click can return
             // there — playback from the Recently watched tab should *stay*
-            // in that tab, not jump to Search.
-            _originView = CurrentViewFromPanels();
-            _activeTab = _originView;
+            // in that tab, not jump to Search. Only do this on FRESH
+            // playback (no prior video). Episode switches via the in-
+            // player popup keep their original origin so PiP / Back
+            // doesn't dump the user to Search just because they hopped
+            // between episodes mid-session.
+            if (!wasAlreadyPlaying)
+            {
+                _originView = CurrentViewFromPanels();
+                _activeTab = _originView;
+            }
             // Starting fresh playback — make sure any previous PiP overlay
             // is closed so the video shows full size.
             ExitPipMode();
@@ -401,6 +620,20 @@ public partial class MainWindow
             ShowPlaybackView();
             if (BackButton is not null) BackButton.IsVisible = true;
             if (PipButton is not null) PipButton.IsVisible = true;
+            // Episodes button — only relevant for series episodes.
+            // Reset the popup's season cache so a different series
+            // triggers a fresh GetSeriesAsync on the next hover.
+            if (EpisodesBtn is not null)
+                EpisodesBtn.IsVisible = !string.IsNullOrEmpty(source.SeriesPageUrl);
+            // Next-episode button: same series-only visibility as
+            // EpisodesBtn. Enable state is driven by the cached season
+            // list — call after ResetEpisodesPopupCache so we read
+            // post-reset cache state (different-series resets clear
+            // _episodesPopupSeasons; same-series keeps it).
+            if (NextEpisodeBtn is not null)
+                NextEpisodeBtn.IsVisible = !string.IsNullOrEmpty(source.SeriesPageUrl);
+            ResetEpisodesPopupCache(source);
+            UpdateNextEpisodeButtonState();
             if (TopGradient is not null) TopGradient.IsVisible = true;
             if (BottomGradient is not null) BottomGradient.IsVisible = true;
             if (TransportBarContainer is not null) TransportBarContainer.IsVisible = true;
@@ -415,7 +648,7 @@ public partial class MainWindow
             VideoBorder.Background = Avalonia.Media.Brushes.Black;
             if (CurrentMovieTitle is not null)
             {
-                CurrentMovieTitle.Text = source.Title;
+                SetVideoTitleInlines(source);
                 CurrentMovieTitle.IsVisible = true;
             }
             // Start the 3s auto-hide timer so the bar fades out if the
@@ -436,6 +669,22 @@ public partial class MainWindow
                 next.AddOption($":http-referrer={s.HttpReferer}");
                 next.AddOption($":http-referer={s.HttpReferer}");
             }
+            // Resume position via :start-time (seconds) instead of a
+            // post-Play seek. On HLS streams (bs.to → VOE) the post-Play
+            // path was unreliable: VLC's Playing event fires before the
+            // m3u8 index is fully loaded, and seeking at that point can
+            // land on a missing segment and stall the player on a black
+            // frame. :start-time is consumed by the demuxer at media
+            // open time, so the playlist is already positioned at the
+            // target segment before the first frame is decoded.
+            // _pendingSeekMs is left set as a belt-and-braces fallback —
+            // if for any reason :start-time is ignored (older VLC, edge-
+            // case stream type), the Playing-event seek still corrects
+            // the position; if :start-time worked, the redundant seek
+            // is a no-op against the same offset.
+            if (startPosMs > 0)
+                next.AddOption(
+                    $":start-time={(startPosMs / 1000.0).ToString(System.Globalization.CultureInfo.InvariantCulture)}");
             System.Diagnostics.Debug.WriteLine(
                 $"[Play] url={s.Url} UA={s.HttpUserAgent} Ref={s.HttpReferer}");
 
@@ -465,13 +714,22 @@ public partial class MainWindow
         var willPause = _player.State == VLCState.Playing;
         PulsePlayerHud(willPause ? "pause" : "play");
         if (willPause) { _player.Pause(); return; }
-        // After end-of-stream the no-arg Play() can resume from VLC's
-        // internal cached position (which produced the "random X minutes
-        // remaining" behaviour). Restart explicitly with the current
-        // media and a zeroed pending seek so we always replay from zero.
+        // Restart from a Stopped/Ended state. Two cases:
+        //   - Genuine end-of-stream: replay from zero (the user finished
+        //     the video and clicked play again).
+        //   - Mid-playback stall: HLS streams (bs.to → VOE) sometimes
+        //     stall right after the initial resume seek lands on a
+        //     segment that hasn't finished downloading yet — the player
+        //     transitions to Stopped without ever showing a frame, and
+        //     the user clicks play to retry. In that case we need to
+        //     re-apply the resume position, not start over from zero.
+        // EndReached fires for genuine end-of-stream, so we use that
+        // (via _player.State == Ended) to tell the two cases apart:
+        // Stopped without Ended means a stall, restart with the resume
+        // position; Ended means the user has finished, replay from 0.
         if (_player.State == VLCState.Ended || _player.State == VLCState.Stopped)
         {
-            _pendingSeekMs = 0;
+            _pendingSeekMs = _player.State == VLCState.Stopped ? _resumeFromMs : 0;
             _player.Play(_currentMedia);
             return;
         }
@@ -582,10 +840,29 @@ public partial class MainWindow
         _volumePopupHideTimer.Start();
     }
 
+    // Click-suppression on the volume popup — same reasoning as the
+    // Episodes popup. Without these, a click on empty popup space
+    // bubbles out to VideoOverlayRoot.Tapped and toggles play/pause.
+    // PointerPressed alone isn't enough since Tapped/DoubleTapped are
+    // gesture-recogniser events synthesised independently.
+    private void VolumePopupContent_PointerPressed(object? sender, PointerPressedEventArgs e)
+        => e.Handled = true;
+
+    private void VolumePopupContent_Tapped(object? sender, TappedEventArgs e)
+        => e.Handled = true;
+
     private void ShowVolumePopup()
     {
+        // Hard-close sibling popups (episodes / next-episode) so a
+        // fast pointer sweep across the transport bar doesn't leave
+        // them lingering during the 120 ms hide grace.
+        CloseSiblingTransportPopups(TransportPopupVolume);
         VolumePopupText.Text = $"{(int)VolumeSlider.Value}%";
         VolumePopup.IsOpen = true;
+        // Sticky hover scale on the mute icon while the popup is up
+        // (same recipe used by Episodes + NextEpisode). Removed in
+        // the volume popup's hide tick.
+        MuteBtn?.Classes.Set("popup-open", true);
         // Hide the timeline row while the volume popup is on-screen so
         // nothing competes visually with the vertical slider.
         TimelineRow.IsVisible = false;
@@ -973,6 +1250,7 @@ public partial class MainWindow
         _currentVideoResult = null;
         _pendingSeekMs = 0;
         _hasReceivedFrame = false;
+        _isVideoActuallyPlaying = false;
         _playbackWatchdog.Stop();
         // Stop the auto-hide timer — otherwise its next tick would fire
         // HideFullscreenUi *after* we've torn down playback, leaving
@@ -982,6 +1260,10 @@ public partial class MainWindow
 
         BackButton.IsVisible = false;
         PipButton.IsVisible = false;
+        if (EpisodesBtn is not null) EpisodesBtn.IsVisible = false;
+        if (NextEpisodeBtn is not null) NextEpisodeBtn.IsVisible = false;
+        if (NextEpisodePopup is not null) NextEpisodePopup.IsOpen = false;
+        if (EpisodesPopup is not null) EpisodesPopup.IsOpen = false;
         TopGradient.IsVisible = false;
         BottomGradient.IsVisible = false;
         TransportBarContainer.IsVisible = false;
@@ -1000,6 +1282,7 @@ public partial class MainWindow
         // linger for a tick after close.
         _pendingPlayingPageUrl = null;
         ApplyRecentPlayingHighlightNow();
+        SyncSearchResultsCurrentlyPlaying();
 
         // Return to whichever view the user came from, and keep the
         // sidebar's active-tab highlight in sync.
@@ -1048,5 +1331,45 @@ public partial class MainWindow
         // class detaches the animation outright when not loading.
         if (LoadingSpinner is not null) LoadingSpinner.Classes.Set("spinning", loading);
         if (PipLoadingSpinner is not null) PipLoadingSpinner.Classes.Set("spinning", loading);
+    }
+
+    // Builds the player title as Inlines so the show name reads in
+    // a heavier weight than the rest of the line. For a series
+    // episode: "ShowName (Bold) S1E20 (SemiBold) Episode title (SemiBold)".
+    // For a movie: just the title in the default SemiBold weight.
+    // The bs.to "| Episode NNN |" prefix is stripped from the episode
+    // title since the SnEnn segment already conveys the same info.
+    private void SetVideoTitleInlines(VideoResult source)
+    {
+        if (CurrentMovieTitle is null) return;
+        var inlines = new InlineCollection();
+        if (!string.IsNullOrEmpty(source.SeriesTitle))
+        {
+            inlines.Add(new Run(source.SeriesTitle) { FontWeight = FontWeight.Bold });
+            if (source.SeasonNumber is int s && source.EpisodeNumber is int e)
+                inlines.Add(new Run($" S{s:00}E{e:00}"));
+            var epTitle = StripEpisodePrefix(source.Title);
+            if (!string.IsNullOrEmpty(epTitle))
+                inlines.Add(new Run($" · {epTitle}"));
+        }
+        else
+        {
+            // Movies — render the title in the same Bold weight the
+            // show name gets for series, so the title's prominence is
+            // consistent across the two playback flows.
+            inlines.Add(new Run(source.Title ?? string.Empty) { FontWeight = FontWeight.Bold });
+        }
+        CurrentMovieTitle.Inlines = inlines;
+    }
+
+    private static string StripEpisodePrefix(string? title)
+    {
+        if (string.IsNullOrEmpty(title)) return string.Empty;
+        var stripped = System.Text.RegularExpressions.Regex.Replace(
+            title.Trim(),
+            @"^(?:\|\s*Episode\s+\d+\s*\|\s*)+",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return stripped.TrimStart('|').Trim();
     }
 }

@@ -6,12 +6,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app
 
-RUN pip install 'yt-dlp>=2026.3.1' 'fastapi>=0.115' 'uvicorn[standard]>=0.32' \
-    'bgutil-ytdlp-pot-provider'
+# yt-dlp + the FastAPI host that wraps it. bgutil-ytdlp-pot-provider
+# is a sidecar plugin used by the YouTube extractor.
+RUN pip install "yt-dlp>=2026.3.1" "fastapi>=0.115" "uvicorn[standard]>=0.32" "bgutil-ytdlp-pot-provider"
+
+# bs.to scraping deps — used by /series (episode listing) and
+# /bsto/search (filter the cached series directory). Captcha-solving
+# itself happens in the C# app's embedded WebView (see
+# MainWindow.BstoCaptcha.cs); the Python service only handles the
+# captcha-free metadata calls.
+RUN pip install "httpx>=0.27" "beautifulsoup4>=4.12"
 
 WORKDIR /app
 COPY main.py .
-# Custom extractors. yt-dlp auto-discovers any module under a
+# Custom yt-dlp extractors. yt-dlp auto-discovers any module under a
 # `yt_dlp_plugins` namespace package on sys.path.
 COPY yt_dlp_plugins ./yt_dlp_plugins
 

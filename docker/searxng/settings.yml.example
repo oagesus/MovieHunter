@@ -100,3 +100,8 @@ engines:
     title_xpath: .//a[@class="movie-title"]/@title
     content_xpath: .//div[contains(@class,"meta")]//text()
     thumbnail_xpath: .//img/@data-src
+
+  # bs.to is NOT a SearXNG engine — bs.to has no usable HTTP-GET search,
+  # so the C# app routes "bsto" queries directly to the yt-dlp container's
+  # /bsto/search endpoint (which fetches the full directory and filters
+  # locally). The bsto Source toggle is injected by MainWindowViewModel.

@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using LibVLCSharp.Shared;
 using MovieHunter.Models;
+using MovieHunter.Services;
 using MovieHunter.ViewModels;
 
 namespace MovieHunter.Views;
@@ -61,9 +62,15 @@ public partial class MainWindow : Window
         _hideUiTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _hideUiTimer.Tick += (_, _) => HideFullscreenUi();
 
-        // If no frame arrives within 12s of Play(), assume the stream is dead
+        // If no frame arrives within 25s of Play(), assume the stream is dead
         // and show a clear error instead of leaving a black "Playing" screen.
-        _playbackWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
+        // 25s (was 12s) covers the cold-start chain on bs.to-resolved
+        // hoster streams: DNS resolution + TLS handshake + master m3u8
+        // fetch + variant selection + first segment download. The retry
+        // case (user pressed Play again after a previous error) hits
+        // cached DNS/TLS/segment state and starts fast, but the first
+        // attempt after a captcha solve can legitimately need 15-20s.
+        _playbackWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(25) };
         _playbackWatchdog.Tick += OnPlaybackWatchdogTick;
 
         WirePlayerEvents();
@@ -72,12 +79,61 @@ public partial class MainWindow : Window
         PositionSlider.IsEnabled = false;
         PipPositionSlider.ValueChanged += OnPositionSliderChanged;
         PipPositionSlider.IsEnabled = false;
+        // Pointer press / release on the slider as drag-detection.
+        // Avoiding Thumb.DragStarted/DragCompleted because those only
+        // fire on direct thumb grabs — a click on the track followed
+        // by a drag never triggered DragStarted, leaving the dragging
+        // flag false and letting TimeChanged yank the slider back to
+        // the player's pre-seek position mid-drag. PointerPressed
+        // catches every interaction (thumb grab, track click, click-
+        // and-drag), and PointerCaptureLost backs up Released in case
+        // the user drags off-window before letting go. Tunneling
+        // (RoutingStrategies.Tunnel | Bubble) so the handler runs even
+        // when a child of the slider (like the inner Thumb) handles
+        // the event.
+        PositionSlider.AddHandler(
+            InputElement.PointerPressedEvent,
+            OnPositionSliderPointerPressed,
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+                | Avalonia.Interactivity.RoutingStrategies.Bubble);
+        PositionSlider.AddHandler(
+            InputElement.PointerReleasedEvent,
+            OnPositionSliderPointerReleased,
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+                | Avalonia.Interactivity.RoutingStrategies.Bubble);
+        PositionSlider.AddHandler(
+            InputElement.PointerCaptureLostEvent,
+            OnPositionSliderPointerCaptureLost,
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+                | Avalonia.Interactivity.RoutingStrategies.Bubble);
+        PipPositionSlider.AddHandler(
+            InputElement.PointerPressedEvent,
+            OnPositionSliderPointerPressed,
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+                | Avalonia.Interactivity.RoutingStrategies.Bubble);
+        PipPositionSlider.AddHandler(
+            InputElement.PointerReleasedEvent,
+            OnPositionSliderPointerReleased,
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+                | Avalonia.Interactivity.RoutingStrategies.Bubble);
+        PipPositionSlider.AddHandler(
+            InputElement.PointerCaptureLostEvent,
+            OnPositionSliderPointerCaptureLost,
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+                | Avalonia.Interactivity.RoutingStrategies.Bubble);
 
         // Track window resizes so the floating PiP frame keeps its
         // distance from the bottom-right edge instead of staying glued
         // to its old top-left coordinate (which clipped on shrink and
         // drifted away from the corner on grow).
         PipHost.SizeChanged += OnPipHostSizeChanged;
+
+        // Close any open dropdowns when the window resizes — Avalonia's
+        // popups are positioned against their target at open time and
+        // don't reposition on a size change, so they'd otherwise float
+        // detached from the (now-moved) ComboBox button. Closing is the
+        // simplest cure: the user re-opens, popup re-anchors.
+        SizeChanged += OnWindowSizeChangedForPopups;
 
         // Highlight the initial sidebar tab (Search by default).
         UpdateActiveNavTab();
@@ -106,12 +162,26 @@ public partial class MainWindow : Window
             if (_volumeDragging) return;
             if (_pointerOverMute || _pointerOverVolumePopup) return;
             VolumePopup.IsOpen = false;
-            TimelineRow.IsVisible = true;
+            // Drop the sticky hover scale on the mute icon now that
+            // its popup is gone.
+            MuteBtn?.Classes.Set("popup-open", false);
+            // Cross-check against the other transport-bar hover popups
+            // so closing the volume popup doesn't re-show the scrub bar
+            // while episodes / next-episode is still up.
+            if (!IsAnyTransportPopupOpen())
+                TimelineRow.IsVisible = true;
         };
 
         // Drag tracking on the volume slider — used to keep the popup
         // open while the user is holding the thumb, even if the pointer
-        // leaves the popup bounds during the drag.
+        // leaves the popup bounds during the drag. The visual "press"
+        // tint that used to flash on off-track clicks is suppressed
+        // via scoped Slider.Resources (see VolumeSlider's XAML), which
+        // alias the *Pressed brushes back to their non-pressed colours.
+        // That keeps the full thumb-grab area clickable for dragging
+        // (no hit-band filter to break the drag) while not visually
+        // changing the slider when the click happens to land in the
+        // forgiving side-margin of the slider's bounds.
         VolumeSlider.AddHandler(PointerPressedEvent, (_, e) =>
         {
             if (e.GetCurrentPoint(VolumeSlider).Properties.IsLeftButtonPressed)
@@ -147,6 +217,11 @@ public partial class MainWindow : Window
         // Blur search TextBoxes when the user clicks outside of them.
         AddHandler(PointerPressedEvent, OnRootPointerPressed,
             RoutingStrategies.Tunnel, handledEventsToo: true);
+        // Track press / release inside the in-video Episodes popup so a
+        // ScrollBar-thumb drag inside it doesn't close the popup mid-
+        // drag. Same Tunnel-on-the-host pattern the VolumeSlider uses
+        // for _volumeDragging.
+        HookEpisodesPopupDragHandlers();
         PointerMoved += OnWindowPointerMoved;
         Closing  += OnClosing;
     }
@@ -176,14 +251,35 @@ public partial class MainWindow : Window
             void RefreshRecentEmpty() =>
                 RecentEmptyLabel.IsVisible = vm.Recent.Items.Count == 0;
             RefreshRecentEmpty();
-            vm.Recent.Items.CollectionChanged += (_, _) =>
+            // Subscribe to PropertyChanged on every RecentWatch already
+            // loaded (the list is populated before this hook fires) so
+            // in-place episode updates from UpdatePositionAndSave reach
+            // OnRecentWatchPropertyChanged and refresh the search-row
+            // label. The CollectionChanged hook below handles items
+            // added or removed after this point.
+            foreach (var rw in vm.Recent.Items)
+                rw.PropertyChanged += OnRecentWatchPropertyChanged;
+            vm.Recent.Items.CollectionChanged += (_, args) =>
             {
+                // Hook / unhook PropertyChanged for items entering /
+                // leaving the collection so the listener set stays in
+                // sync with the live items.
+                if (args.NewItems is not null)
+                    foreach (RecentWatch rw in args.NewItems)
+                        rw.PropertyChanged += OnRecentWatchPropertyChanged;
+                if (args.OldItems is not null)
+                    foreach (RecentWatch rw in args.OldItems)
+                        rw.PropertyChanged -= OnRecentWatchPropertyChanged;
                 RefreshRecentEmpty();
                 // Re-apply the "currently playing" highlight: SaveCurrentPosition
                 // (called on pause / seek) re-inserts the card at the top,
                 // which destroys and recreates its visual container — so the
                 // highlight on the new container needs to be set fresh.
                 RefreshRecentPlayingHighlight();
+                // A play just upserted a Recent entry — push the new
+                // last-watched episode subtitle onto any matching search
+                // result so the bottom-aligned label appears immediately.
+                RefreshAllLastWatchedFromRecent();
             };
 
             // Same pattern for the search results panel — show the empty
@@ -197,6 +293,16 @@ public partial class MainWindow : Window
                 // New search results need their saved-state populated
                 // from MyList so the chip renders the right glyph.
                 RefreshAllIsInMyListFromMyList();
+                // Same idea for the "currently playing" highlight: a
+                // fresh search may pull up the active video; the
+                // matching row should light up immediately, not wait
+                // for the next playback state change.
+                SyncSearchResultsCurrentlyPlaying();
+                // Surface the last-watched episode ("S02E05 · Title")
+                // bottom-aligned on series rows the user has watched
+                // before, so the resume target is visible at a glance
+                // without opening the picker.
+                RefreshAllLastWatchedFromRecent();
             };
 
             // Sync poster-chip state once on load and again whenever the
